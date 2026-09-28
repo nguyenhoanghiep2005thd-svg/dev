@@ -1,0 +1,103 @@
+services:
+
+  # ── PostgreSQL 16 ─────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: phonestore_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${DB_NAME:-phonestore_db}
+      POSTGRES_USER:     ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-PhoneStore@2024}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-phonestore_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    # Không expose port 5432 ra ngoài host trong production
+    # Uncomment dòng dưới nếu cần truy cập từ host (dev only)
+    # ports:
+    #   - "5432:5432"
+
+
+  # ── Django + Gunicorn ──────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: runner          # chỉ build stage runner (bỏ builder artifacts)
+    container_name: phonestore_backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env        # đọc secrets từ file, không hard-code
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+    volumes:
+      - media_data:/app/media         # persist uploaded images
+      - static_data:/app/staticfiles  # persist collected static
+    networks:
+      - backend_net
+      - frontend_net
+    depends_on:
+      db:
+        condition: service_healthy
+    # Tạo migrations → migrate → collectstatic → gunicorn
+    command: sh -c "python manage.py makemigrations accounts products orders --noinput && python manage.py migrate --noinput && python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --timeout 120"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/products/')\" 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    # Không expose port 8000 ra ngoài — frontend proxy qua nginx
+    # Uncomment nếu cần test API trực tiếp
+    # ports:
+    #   - "8000:8000"
+
+
+  # ── React + Nginx ──────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: runner          # chỉ lấy nginx stage
+    container_name: phonestore_frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"               # website truy cập qua port 80
+    volumes:
+      - static_data:/usr/share/nginx/html/static:ro   # optional: serve Django static qua nginx
+    networks:
+      - frontend_net
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost/ 2>&1 | grep -q 'HTTP' || wget -qO /dev/null http://localhost/ 2>&1; exit 0"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+
+# ── Networks ───────────────────────────────────────────────────
+networks:
+  backend_net:
+    driver: bridge
+    name: phonestore_backend
+  frontend_net:
+    driver: bridge
+    name: phonestore_frontend
+
+
+# ── Volumes ────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+    name: phonestore_postgres_data
+  media_data:
+    name: phonestore_media
+  static_data:
+    name: phonestore_static
