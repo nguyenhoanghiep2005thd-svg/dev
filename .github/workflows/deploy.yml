@@ -1,0 +1,259 @@
+# ──────────────────────────────────────────────────────────────────────────────
+#  PhoneStore — CI/CD Pipeline
+#  Trigger: push to main branch
+#
+#  Luồng:
+#    push main → build images → push Docker Hub → SSH deploy → verify
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: CI/CD — Build & Deploy PhoneStore
+
+on:
+  push:
+    branches: [ main ]
+  # Cho phép chạy thủ công từ GitHub UI
+  workflow_dispatch:
+
+# Chỉ cho 1 deployment chạy tại 1 thời điểm
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false   # không cancel đang chạy, queue lại
+
+env:
+  # Docker Hub image names
+  BACKEND_IMAGE:  ${{ secrets.DOCKERHUB_USERNAME }}/phonestore-backend
+  FRONTEND_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/phonestore-frontend
+
+# ──────────────────────────────────────────────────────────────────────────────
+jobs:
+
+  # ── JOB 1: Lint & basic checks ────────────────────────────────────────────
+  lint:
+    name: Lint & Validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate docker-compose.yml
+        run: docker compose config --quiet
+
+      - name: Check Dockerfile syntax (backend)
+        run: docker run --rm -i hadolint/hadolint < backend/Dockerfile || true
+
+      - name: Check Dockerfile syntax (frontend)
+        run: docker run --rm -i hadolint/hadolint < frontend/Dockerfile || true
+
+
+  # ── JOB 2: Build & Push images ─────────────────────────────────────────────
+  build-and-push:
+    name: Build & Push Docker Images
+    runs-on: ubuntu-latest
+    needs: lint
+
+    # Expose outputs để job deploy dùng
+    outputs:
+      backend_tag:  ${{ steps.meta-backend.outputs.version }}
+      frontend_tag: ${{ steps.meta-frontend.outputs.version }}
+      sha_short:    ${{ steps.sha.outputs.short }}
+
+    steps:
+      # 1. Checkout source code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Lấy short SHA để tag image
+      - name: Get short SHA
+        id: sha
+        run: echo "short=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_OUTPUT
+
+      # 3. Setup Docker Buildx (multi-platform build, cache support)
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 4. Login Docker Hub — dùng Secrets, không hard-code
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 5. Generate tags & labels cho BACKEND image
+      #    Tags: latest + git-SHA + branch name
+      - name: Docker metadata — Backend
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.BACKEND_IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=short
+            type=ref,event=branch
+
+      # 6. Generate tags & labels cho FRONTEND image
+      - name: Docker metadata — Frontend
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.FRONTEND_IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=short
+            type=ref,event=branch
+
+      # 7. Build & Push BACKEND image
+      #    --target runner: chỉ build stage runner (bỏ builder stage)
+      #    cache-from/to: tái sử dụng cache từ lần build trước
+      - name: Build & Push Backend image
+        uses: docker/build-push-action@v5
+        with:
+          context:    ./backend
+          file:       ./backend/Dockerfile
+          target:     runner
+          push:       true
+          tags:       ${{ steps.meta-backend.outputs.tags }}
+          labels:     ${{ steps.meta-backend.outputs.labels }}
+          cache-from: type=gha,scope=backend
+          cache-to:   type=gha,scope=backend,mode=max
+          build-args: |
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            GIT_SHA=${{ github.sha }}
+
+      # 8. Build & Push FRONTEND image
+      - name: Build & Push Frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context:    ./frontend
+          file:       ./frontend/Dockerfile
+          target:     runner
+          push:       true
+          tags:       ${{ steps.meta-frontend.outputs.tags }}
+          labels:     ${{ steps.meta-frontend.outputs.labels }}
+          cache-from: type=gha,scope=frontend
+          cache-to:   type=gha,scope=frontend,mode=max
+
+      # 9. In tóm tắt build
+      - name: Build summary
+        run: |
+          echo "## 🐳 Docker Images Built" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | Tags |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend  | \`latest\`, \`sha-${{ steps.sha.outputs.short }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend | \`latest\`, \`sha-${{ steps.sha.outputs.short }}\` |" >> $GITHUB_STEP_SUMMARY
+
+
+  # ── JOB 3: Deploy to Production ───────────────────────────────────────────
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment: production      # yêu cầu approval nếu cấu hình trong GitHub
+
+    steps:
+      # 1. Checkout để lấy docker-compose.yml
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. SSH vào server và deploy
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:        ${{ secrets.DEPLOY_HOST }}
+          username:    ${{ secrets.DEPLOY_USER }}
+          key:         ${{ secrets.DEPLOY_SSH_KEY }}
+          port:        ${{ secrets.DEPLOY_PORT || 22 }}
+          script: |
+            set -e   # dừng ngay nếu có lỗi
+
+            echo "=== [1/6] Chuẩn bị thư mục deploy ==="
+            mkdir -p ~/phonestore
+            cd ~/phonestore
+
+            echo "=== [2/6] Pull code mới nhất ==="
+            if [ -d ".git" ]; then
+              git fetch origin main
+              git reset --hard origin/main
+            else
+              git clone https://github.com/${{ github.repository }} .
+            fi
+
+            echo "=== [3/6] Login Docker Hub ==="
+            echo "${{ secrets.DOCKERHUB_TOKEN }}" | \
+              docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+            echo "=== [4/6] Pull images mới nhất ==="
+            docker compose pull backend frontend
+
+            echo "=== [5/6] Restart containers (zero-downtime) ==="
+            # Khởi động lại từng service để tránh downtime
+            docker compose up -d --no-deps --remove-orphans backend
+            sleep 10
+            docker compose up -d --no-deps --remove-orphans frontend
+
+            echo "=== [6/6] Cleanup images cũ ==="
+            docker image prune -f --filter "until=24h"
+
+            echo "✅ Deploy hoàn tất!"
+
+
+  # ── JOB 4: Verify after deploy ─────────────────────────────────────────────
+  verify:
+    name: Verify Deployment
+    runs-on: ubuntu-latest
+    needs: deploy
+
+    steps:
+      # Chờ service khởi động
+      - name: Wait for service to be ready
+        run: sleep 30
+
+      # Kiểm tra frontend trả về 200
+      - name: Health check — Frontend
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 30 \
+            http://${{ secrets.DEPLOY_HOST }})
+          echo "Frontend HTTP status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "❌ Frontend health check FAILED (status: $STATUS)"
+            exit 1
+          fi
+          echo "✅ Frontend is healthy"
+
+      # Kiểm tra API trả về 200
+      - name: Health check — Backend API
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 30 \
+            http://${{ secrets.DEPLOY_HOST }}/api/v1/products/)
+          echo "API HTTP status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "❌ API health check FAILED (status: $STATUS)"
+            exit 1
+          fi
+          echo "✅ Backend API is healthy"
+
+      # In kết quả tổng hợp
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo "## ✅ Deployment Successful" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Deployed by | @${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Time | $(date -u '+%Y-%m-%d %H:%M UTC') |" >> $GITHUB_STEP_SUMMARY
+          echo "| URL | http://${{ secrets.DEPLOY_HOST }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "## ❌ Deployment FAILED" >> $GITHUB_STEP_SUMMARY
+          echo "Health checks failed after deployment." >> $GITHUB_STEP_SUMMARY
+          echo "Check container logs on server:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" >> $GITHUB_STEP_SUMMARY
+          echo "cd ~/phonestore && docker compose logs --tail=50" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
