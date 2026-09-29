@@ -59,12 +59,7 @@ RUN mkdir -p /app/staticfiles /app/media \
 
 USER appuser
 
-# Gunicorn thay thế runserver trong production
+# Gunicorn đọc PORT từ environment variable (Render inject PORT tự động)
 EXPOSE 8000
 
-CMD ["gunicorn", "config.wsgi:application", \
-     "--bind", "0.0.0.0:8000", \
-     "--workers", "3", \
-     "--timeout", "120", \
-     "--access-logfile", "-", \
-     "--error-logfile", "-"]
+CMD ["sh", "-c", "gunicorn config.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 2 --timeout 120 --access-logfile - --error-logfile -"]

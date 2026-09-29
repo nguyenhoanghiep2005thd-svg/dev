@@ -1,0 +1,101 @@
+# ──────────────────────────────────────────────────────────────
+#  render.yaml — Render.com Blueprint
+#  Định nghĩa toàn bộ services: backend + frontend + database
+#  Docs: https://render.com/docs/blueprint-spec
+# ──────────────────────────────────────────────────────────────
+
+services:
+
+  # ── 1. Backend — Django + Gunicorn ──────────────────────────
+  - type: web
+    name: phonestore-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free                          # free | starter | standard
+    region: singapore                   # chọn region gần Việt Nam
+
+    # Render auto-inject PORT, backend lắng nghe qua ${PORT:-8000}
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.prod
+
+      - key: SECRET_KEY
+        generateValue: true             # Render tự generate random key
+
+      - key: DEBUG
+        value: "False"
+
+      - key: ALLOWED_HOSTS
+        value: ".onrender.com"          # Render domain
+
+      - key: CORS_ALLOWED_ORIGINS
+        value: "https://phonestore-frontend.onrender.com"
+
+      # Database — Render inject DATABASE_URL tự động khi link
+      - key: DATABASE_URL
+        fromDatabase:
+          name: phonestore-db
+          property: connectionString
+
+      # Giữ tương thích với settings dùng DB_* riêng
+      - key: DB_HOST
+        fromDatabase:
+          name: phonestore-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: phonestore-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: phonestore-db
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: phonestore-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: phonestore-db
+          property: password
+
+    # Chạy migrate trước khi start
+    buildCommand: ""
+    startCommand: >-
+      sh -c "
+        python manage.py migrate --noinput &&
+        python manage.py collectstatic --noinput &&
+        gunicorn config.wsgi:application
+          --bind 0.0.0.0:${PORT:-8000}
+          --workers 2
+          --timeout 120
+      "
+
+    healthCheckPath: /api/v1/products/
+
+
+  # ── 2. Frontend — React + Nginx ─────────────────────────────
+  - type: web
+    name: phonestore-frontend
+    runtime: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    plan: free
+    region: singapore
+
+    envVars:
+      # URL API backend — frontend gọi đến đây
+      - key: VITE_API_URL
+        value: "https://phonestore-backend.onrender.com"
+
+    healthCheckPath: /
+
+
+# ── 3. Database — PostgreSQL ────────────────────────────────
+databases:
+  - name: phonestore-db
+    plan: free                          # free PostgreSQL 90 ngày
+    region: singapore
+    databaseName: phonestore_db
+    user: phonestore_user
