@@ -53,7 +53,7 @@ export default function LoginPage() {
         // ── Fallback demo (khi backend chưa chạy) ──────
         if (apiErr?.code === 'ERR_NETWORK' || apiErr?.code === 'ECONNREFUSED') {
           await new Promise(r => setTimeout(r, 600))
-          if (form.email === 'admin@phonestore.vn' && form.password === 'admin123456') {
+          if (form.email === 'admin@phonestore.com' && form.password === 'admin123456') {
             user   = { id: 1, email: form.email, full_name: 'Admin', role: 'admin', phone: '' }
             tokens = { access: 'demo-token', refresh: 'demo-refresh' }
           } else if (form.email && form.password.length >= 6) {
@@ -113,7 +113,7 @@ export default function LoginPage() {
 
           {/* Demo hint */}
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-5 text-xs text-blue-700">
-            <strong>Demo:</strong> admin@phonestore.vn / admin123456
+            <strong>Demo:</strong> admin@phonestore.com / admin123456
             <span className="text-blue-500"> (hoặc bất kỳ email + mật khẩu ≥6 ký tự)</span>
           </div>
 

@@ -28,7 +28,10 @@ api.interceptors.response.use(
       original._retry = true
       try {
         const refresh = useAuthStore.getState().refreshToken
-        const { data } = await axios.post('/api/v1/auth/login/refresh/', { refresh })
+        const refreshBase = import.meta.env.VITE_API_URL
+          ? `${import.meta.env.VITE_API_URL}/api/v1`
+          : '/api/v1'
+        const { data } = await axios.post(`${refreshBase}/auth/login/refresh/`, { refresh })
         useAuthStore.getState().login(
           useAuthStore.getState().user,
           { access: data.access, refresh: data.refresh ?? refresh }
