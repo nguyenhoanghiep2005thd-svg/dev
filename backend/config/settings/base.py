@@ -132,8 +132,14 @@ SIMPLE_JWT = {
 # ─── CORS ────────────────────────────────────────────────────────────────────
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [
-    'http://localhost:5173',   # Vite dev server
+    'http://localhost:5173',
     'http://localhost:3000',
+    'http://localhost:80',
+    'http://localhost',
+]
+# Regex: cho phép mọi subdomain *.onrender.com (Render có thể tạo URL random)
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r'^https://.*\.onrender\.com$',
 ]
 CORS_ALLOW_CREDENTIALS = True
 

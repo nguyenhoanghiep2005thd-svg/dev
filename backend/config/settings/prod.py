@@ -34,13 +34,10 @@ else:
         }
     }
 
-# ── CORS ─────────────────────────────────────────────────────
+# ── CORS — kế thừa CORS_ALLOWED_ORIGIN_REGEXES từ base.py
+# Cho phép thêm origin cụ thể qua env var nếu cần
 CORS_ALLOW_ALL_ORIGINS = False
-CORS_ALLOWED_ORIGINS   = config(
-    'CORS_ALLOWED_ORIGINS',
-    default='http://localhost',
-    cast=Csv(),
-)
+CORS_ALLOW_CREDENTIALS = True
 
 # ── Static & Media ─────────────────────────────────────────────
 STATIC_ROOT = BASE_DIR / 'staticfiles'   # noqa: F405
