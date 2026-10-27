@@ -35,9 +35,10 @@ export default function ProductCard({ product, className = '' }) {
         className="relative block bg-gray-50 overflow-hidden aspect-square"
       >
         <img
-          src={product.primary_image || `https://placehold.co/300x300/f5f5f5/999?text=${encodeURIComponent(product.name ?? '')}`}
+          src={product.primary_image || `https://placehold.co/300x300/f5f5f5/999999?text=${encodeURIComponent(product.name ?? 'SP')}`}
           alt={product.name}
           loading="lazy"
+          onError={e => { e.target.src = `https://placehold.co/300x300/f5f5f5/999999?text=${encodeURIComponent(product.name ?? 'SP')}` }}
           className="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-300"
         />
 

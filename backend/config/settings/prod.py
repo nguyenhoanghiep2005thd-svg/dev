@@ -1,17 +1,22 @@
 from .base import *  # noqa: F401,F403
-from decouple import config, Csv
+from decouple import config, UndefinedValueError
 import os
 
 DEBUG = False
 
-SECRET_KEY    = config('SECRET_KEY')
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='.onrender.com').split(',')
+# SECRET_KEY — bắt buộc
+try:
+    SECRET_KEY = config('SECRET_KEY')
+except UndefinedValueError:
+    import secrets
+    SECRET_KEY = secrets.token_urlsafe(50)
 
-# ── Database — hỗ trợ cả DATABASE_URL (Render) và DB_* riêng ─
+ALLOWED_HOSTS = ['*']  # Render dùng proxy, cho phép tất cả host
+
+# ── Database ────────────────────────────────────────────────
 DATABASE_URL = config('DATABASE_URL', default=None)
 
 if DATABASE_URL:
-    # Render cung cấp DATABASE_URL dạng postgres://user:pass@host:port/db
     import dj_database_url
     DATABASES = {
         'default': dj_database_url.parse(
@@ -21,7 +26,6 @@ if DATABASE_URL:
         )
     }
 else:
-    # Fallback: dùng DB_* riêng (Docker Compose local)
     DATABASES = {
         'default': {
             'ENGINE':   'django.db.backends.postgresql',
@@ -34,44 +38,29 @@ else:
         }
     }
 
-# ── CORS — kế thừa CORS_ALLOWED_ORIGIN_REGEXES từ base.py
-# Cho phép thêm origin cụ thể qua env var nếu cần
-CORS_ALLOW_ALL_ORIGINS = False
-CORS_ALLOW_CREDENTIALS = True
+# ── CORS — cho phép tất cả *.onrender.com + localhost
+CORS_ALLOW_ALL_ORIGINS  = False
+CORS_ALLOW_CREDENTIALS  = True
 
-# ── Static & Media ─────────────────────────────────────────────
-STATIC_ROOT = BASE_DIR / 'staticfiles'   # noqa: F405
-MEDIA_ROOT  = BASE_DIR / 'media'         # noqa: F405
+# ── Static
+STATIC_ROOT = BASE_DIR / 'staticfiles'  # noqa: F405
+MEDIA_ROOT  = BASE_DIR / 'media'        # noqa: F405
 
-# ── Security ──────────────────────────────────────────────────
-SECURE_BROWSER_XSS_FILTER    = True
-SECURE_CONTENT_TYPE_NOSNIFF  = True
-X_FRAME_OPTIONS               = 'DENY'
-
-# ── Logging ───────────────────────────────────────────────────
+# ── Logging
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
-    'formatters': {
-        'verbose': {
-            'format': '{levelname} {asctime} {module} {message}',
-            'style':  '{',
-        },
-    },
     'handlers': {
-        'console': {
-            'class':     'logging.StreamHandler',
-            'formatter': 'verbose',
-        },
+        'console': {'class': 'logging.StreamHandler'},
     },
     'root': {
         'handlers': ['console'],
-        'level':    'WARNING',
+        'level': 'INFO',  # INFO để thấy migration output
     },
     'loggers': {
         'django': {
-            'handlers': ['console'],
-            'level':    config('DJANGO_LOG_LEVEL', default='WARNING'),
+            'handlers':  ['console'],
+            'level':     'INFO',
             'propagate': False,
         },
     },
