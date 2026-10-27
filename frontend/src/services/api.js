@@ -1,8 +1,6 @@
 import axios from 'axios'
 import useAuthStore from '../store/authStore'
 
-// Production (Render): VITE_API_URL = https://phonestore-backend.onrender.com
-// Local Docker:        VITE_API_URL không set → dùng relative '/api/v1' (nginx proxy)
 const BASE_URL = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL}/api/v1`
   : '/api/v1'
@@ -12,6 +10,20 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
   timeout: 60000, // 60s — Render free tier spin-up mất ~30-40s
 })
+
+// Auto retry 1 lần nếu timeout (server đang wake up)
+api.interceptors.response.use(
+  res => res,
+  async err => {
+    const isTimeout = err?.code === 'ECONNABORTED' || err?.message?.includes('timeout')
+    if (isTimeout && !err.config._retried) {
+      err.config._retried = true
+      err.config.timeout  = 90000 // retry với timeout dài hơn
+      return api(err.config)
+    }
+    return Promise.reject(err)
+  }
+)
 
 // Gắn token vào mọi request
 api.interceptors.request.use((config) => {
