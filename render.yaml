@@ -1,5 +1,5 @@
 # render.yaml — Render Blueprint
-# Docs: https://render.com/docs/blueprint-spec
+# Database: Neon PostgreSQL (external)
 
 services:
 
@@ -19,14 +19,9 @@ services:
         generateValue: true
       - key: DEBUG
         value: "False"
-      - key: ALLOWED_HOSTS
-        value: ".onrender.com"
-      - key: CORS_ALLOWED_ORIGINS
-        value: "https://phonestore-frontend.onrender.com"
+      # DATABASE_URL — set thủ công từ Neon connection string
       - key: DATABASE_URL
-        fromDatabase:
-          name: phonestore-db
-          property: connectionString
+        sync: false   # không sync từ database service — user tự điền
 
   # ── Frontend — React + Nginx ─────────────────────────────────
   - type: web
@@ -40,11 +35,3 @@ services:
     envVars:
       - key: VITE_API_URL
         value: "https://phonestore-backend.onrender.com"
-
-# ── Database — PostgreSQL ────────────────────────────────────
-databases:
-  - name: phonestore-db
-    plan: free
-    region: singapore
-    databaseName: phonestore_db
-    user: phonestore_user
