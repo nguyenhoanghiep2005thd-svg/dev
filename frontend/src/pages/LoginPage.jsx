@@ -35,24 +35,28 @@ export default function LoginPage() {
     setError('')
 
     try {
-      // ── Gọi API thật ──────────────────────────────────
       let user, tokens
+
       try {
+        // Gọi API thật — timeout 60s cho Render spin-up
         const { data } = await api.post('/auth/login/', {
           email:    form.email.trim(),
           password: form.password,
         })
         tokens = { access: data.access, refresh: data.refresh }
 
-        // Lấy thông tin user
         const profileRes = await api.get('/auth/profile/', {
           headers: { Authorization: `Bearer ${tokens.access}` },
         })
         user = profileRes.data
+
       } catch (apiErr) {
-        // ── Fallback demo (khi backend chưa chạy) ──────
-        if (apiErr?.code === 'ERR_NETWORK' || apiErr?.code === 'ECONNREFUSED') {
-          await new Promise(r => setTimeout(r, 600))
+        const isOffline = ['ERR_NETWORK','ECONNREFUSED','ECONNABORTED'].includes(apiErr?.code)
+                       || apiErr?.message?.includes('timeout')
+
+        if (isOffline) {
+          // Backend đang spin down — dùng demo mode
+          await new Promise(r => setTimeout(r, 400))
           if (form.email === 'admin@phonestore.com' && form.password === 'admin123456') {
             user   = { id: 1, email: form.email, full_name: 'Admin', role: 'admin', phone: '' }
             tokens = { access: 'demo-token', refresh: 'demo-refresh' }
@@ -70,9 +74,7 @@ export default function LoginPage() {
         }
       }
 
-      // Login — authStore tự động sync cart
       await login(user, tokens)
-
       toast.success(`Chào mừng ${user.full_name}! 👋`)
       navigate(from, { replace: true })
 
@@ -88,8 +90,6 @@ export default function LoginPage() {
                     flex items-center justify-center py-12 px-4">
       <div className="w-full max-w-md">
         <div className="card p-8">
-
-          {/* Logo */}
           <div className="text-center mb-7">
             <div className="w-14 h-14 bg-primary-600 rounded-2xl flex items-center justify-center
                             mx-auto mb-4 shadow-lg shadow-primary-200">
@@ -99,7 +99,6 @@ export default function LoginPage() {
             <p className="text-gray-500 text-sm mt-1">Chào mừng bạn trở lại PhoneStore</p>
           </div>
 
-          {/* Pending cart notice */}
           {hasPendingCart && (
             <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200
                             rounded-xl p-3.5 mb-5">
@@ -111,28 +110,20 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* Demo hint */}
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-5 text-xs text-blue-700">
             <strong>Demo:</strong> admin@phonestore.com / admin123456
-            <span className="text-blue-500"> (hoặc bất kỳ email + mật khẩu ≥6 ký tự)</span>
           </div>
 
-          {/* Error */}
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-sm
-                            px-4 py-3 rounded-xl mb-5 flex items-center gap-2">
-              <span className="text-red-500 text-base">⚠</span>
-              {error}
+                            px-4 py-3 rounded-xl mb-5">
+              ⚠ {error}
             </div>
           )}
 
-          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-            {/* Email */}
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">
-                Email
-              </label>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                 <input
@@ -145,18 +136,9 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Password */}
             <div>
               <div className="flex justify-between mb-1.5">
-                <label htmlFor="password" className="text-sm font-medium text-gray-700">
-                  Mật khẩu
-                </label>
-                <button
-                  type="button"
-                  className="text-xs text-primary-600 hover:underline"
-                >
-                  Quên mật khẩu?
-                </button>
+                <label htmlFor="password" className="text-sm font-medium text-gray-700">Mật khẩu</label>
               </div>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
@@ -172,22 +154,13 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPass(s => !s)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400
-                             hover:text-gray-600 transition-colors"
-                  aria-label={showPass ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
 
-            {/* Remember */}
-            <label className="flex items-center gap-2.5 cursor-pointer select-none">
-              <input type="checkbox" className="accent-primary-600 w-4 h-4 rounded" />
-              <span className="text-sm text-gray-600">Ghi nhớ đăng nhập</span>
-            </label>
-
-            {/* Submit */}
             <button
               type="submit"
               disabled={loading}
@@ -200,7 +173,7 @@ export default function LoginPage() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
                   </svg>
-                  Đang đăng nhập...
+                  Đang kết nối server...
                 </span>
               ) : 'Đăng nhập'}
             </button>

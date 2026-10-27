@@ -90,14 +90,18 @@ export default function RegisterPage() {
       toast.success('Đăng ký thành công! Chào mừng bạn đến PhoneStore 🎉')
       navigate('/')
     } catch (err) {
-      if (err?.code === 'ERR_NETWORK') {
-        // Fallback demo khi backend chưa chạy
-        login(
-          { id: Date.now(), email: form.email, full_name: form.full_name, phone: form.phone, role: 'user' },
-          { access: 'demo-token', refresh: 'demo-refresh' }
-        )
-        toast.success('Đăng ký thành công! (demo mode)')
-        navigate('/')
+      if (err?.code === 'ERR_NETWORK' || err?.code === 'ECONNABORTED' || err?.message?.includes('timeout')) {
+        // Timeout hoặc network — thử fallback demo
+        if (import.meta.env.DEV || err?.code === 'ERR_NETWORK') {
+          login(
+            { id: Date.now(), email: form.email, full_name: form.full_name, phone: form.phone, role: 'user' },
+            { access: 'demo-token', refresh: 'demo-refresh' }
+          )
+          toast.success('Đăng ký thành công! (demo mode)')
+          navigate('/')
+        } else {
+          toast.error('Server đang khởi động, vui lòng thử lại sau 30 giây.')
+        }
       } else {
         const data = err?.response?.data
         if (data && typeof data === 'object') {
@@ -183,7 +187,7 @@ export default function RegisterPage() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
                   </svg>
-                  Đang đăng ký...
+                  Đang kết nối server...
                 </span>
               ) : 'Tạo tài khoản'}
             </button>
