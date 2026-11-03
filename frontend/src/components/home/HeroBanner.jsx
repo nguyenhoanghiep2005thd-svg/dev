@@ -32,7 +32,7 @@ const slides = [
     ctaSecond: { label: 'Xem tất cả Samsung', to: '/products?brand_slug=samsung' },
     bg: 'from-blue-950 via-indigo-900 to-blue-950',
     accent: 'text-indigo-300',
-    image: 'https://images.unsplash.com/photo-1706789578150-4ebcc52e0e3d?w=600&q=85',
+    image: 'https://images.unsplash.com/photo-1610945415295-d9bbf067e59c?w=600&q=85',
     tag: 'Samsung',
   },
   {

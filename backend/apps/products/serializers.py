@@ -27,9 +27,16 @@ class CategorySerializer(serializers.ModelSerializer):
 
 
 class ProductImageSerializer(serializers.ModelSerializer):
+    image = serializers.SerializerMethodField()
+
     class Meta:
         model = ProductImage
         fields = ('id', 'image', 'alt_text', 'is_primary', 'order')
+
+    def get_image(self, obj):
+        request = self.context.get('request')
+        url = obj.image.url
+        return request.build_absolute_uri(url) if request else url
 
 
 class ProductListSerializer(serializers.ModelSerializer):
@@ -50,15 +57,13 @@ class ProductListSerializer(serializers.ModelSerializer):
         )
 
     def get_primary_image(self, obj):
-        image = obj.images.filter(is_primary=True).first()
-        if not image:
-            image = obj.images.first()
+        image = obj.images.filter(is_primary=True).first() or obj.images.first()
         if image:
             request = self.context.get('request')
             if request:
                 return request.build_absolute_uri(image.image.url)
             return image.image.url
-        return None
+        return obj.image_url or None
 
 
 class ProductDetailSerializer(serializers.ModelSerializer):
@@ -72,6 +77,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
         queryset=Category.objects.all(), source='category', write_only=True, required=False
     )
     images = ProductImageSerializer(many=True, read_only=True)
+    primary_image = serializers.SerializerMethodField()
     current_price = serializers.ReadOnlyField()
     discount_percent = serializers.ReadOnlyField()
     in_stock = serializers.ReadOnlyField()
@@ -81,9 +87,19 @@ class ProductDetailSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'name', 'slug', 'brand', 'brand_id', 'category', 'category_id',
             'description', 'price', 'sale_price', 'current_price', 'discount_percent',
-            'stock', 'in_stock', 'specs', 'is_active', 'images', 'created_at', 'updated_at',
+            'stock', 'in_stock', 'specs', 'is_active', 'image_url', 'primary_image',
+            'images', 'created_at', 'updated_at',
         )
         read_only_fields = ('slug', 'created_at', 'updated_at')
+
+    def get_primary_image(self, obj):
+        image = obj.images.filter(is_primary=True).first() or obj.images.first()
+        if image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(image.image.url)
+            return image.image.url
+        return obj.image_url or None
 
 
 class ProductImageUploadSerializer(serializers.ModelSerializer):

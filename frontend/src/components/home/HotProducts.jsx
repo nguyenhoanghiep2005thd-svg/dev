@@ -67,8 +67,9 @@ export default function HotProducts() {
                     )}
                   </div>
                   <img
-                    src={hotProducts[0].primary_image}
+                    src={hotProducts[0].primary_image || `https://placehold.co/600x600/f5f5f5/999999?text=${encodeURIComponent(hotProducts[0].name ?? 'SP')}`}
                     alt={hotProducts[0].name}
+                    onError={e => { e.target.src = `https://placehold.co/600x600/f5f5f5/999999?text=${encodeURIComponent(hotProducts[0].name ?? 'SP')}` }}
                     className="w-full h-full object-contain p-8 group-hover:scale-105 transition-transform duration-300"
                   />
                 </div>

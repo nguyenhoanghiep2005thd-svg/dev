@@ -17,6 +17,10 @@ import ProductCard from '../components/product/ProductCard'
 const fmt = (n) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(n)
 
+// Ảnh dự phòng — API trả primary_image = null khi sản phẩm chưa có ảnh
+const fallbackImg = (name) =>
+  `https://placehold.co/600x600/f5f5f5/999999?text=${encodeURIComponent(name || 'SP')}`
+
 /* Ánh xạ key spec → icon + label tiếng Việt */
 const SPEC_META = {
   ram:              { Icon: Cpu,        label: 'RAM' },
@@ -191,8 +195,8 @@ export default function ProductDetailPage() {
 
   /* ── Derived data ── */
   const images      = product.images?.length
-    ? product.images
-    : [{ id: 0, image: product.primary_image, alt_text: product.name, is_primary: true }]
+    ? product.images.map(img => ({ ...img, image: img.image || fallbackImg(product.name) }))
+    : [{ id: 0, image: product.primary_image || fallbackImg(product.name), alt_text: product.name, is_primary: true }]
 
   const colors      = product.specs?.colors  || []
   const storages    = Array.isArray(product.specs?.storage)
@@ -325,8 +329,9 @@ export default function ProductDetailPage() {
               {/* Image */}
               <img
                 key={activeImg}
-                src={images[activeImg]?.image || product.primary_image}
+                src={images[activeImg]?.image || fallbackImg(product.name)}
                 alt={images[activeImg]?.alt_text || product.name}
+                onError={e => { e.target.src = fallbackImg(product.name) }}
                 className="w-full h-full object-contain p-8 animate-fade-in"
               />
 

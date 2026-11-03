@@ -287,7 +287,7 @@ export default function OrdersPage() {
             created_at: '2024-06-15T10:00:00Z',
             shipping_full_name: 'Nguyễn Văn A', shipping_phone: '0901234567',
             shipping_address: '123 Nguyễn Huệ, Q1, TP.HCM',
-            items: [{ product_name: 'iPhone 15', product_image: 'https://images.unsplash.com/photo-1679761478891-50c4d3f0f69c?w=80', quantity: 1, price: 22990000 }],
+            items: [{ product_name: 'iPhone 15', product_image: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=80', quantity: 1, price: 22990000 }],
           },
           {
             id: 10021, status: 'shipping', payment_method: 'bank',
@@ -304,8 +304,8 @@ export default function OrdersPage() {
             shipping_full_name: 'Lê Văn C', shipping_phone: '0934567890',
             shipping_address: '789 Trần Hưng Đạo, Q5, TP.HCM',
             items: [
-              { product_name: 'Samsung Galaxy S24 Ultra', product_image: 'https://images.unsplash.com/photo-1706789578150-4ebcc52e0e3d?w=80', quantity: 1, price: 30990000 },
-              { product_name: 'Redmi 13C', product_image: 'https://images.unsplash.com/photo-1603732551658-5fabbebb14ea?w=80', quantity: 1, price: 3490000 },
+              { product_name: 'Samsung Galaxy S24 Ultra', product_image: 'https://images.unsplash.com/photo-1610945415295-d9bbf067e59c?w=80', quantity: 1, price: 30990000 },
+              { product_name: 'Redmi 13C', product_image: 'https://images.unsplash.com/photo-1580910051074-3eb694886505?w=80', quantity: 1, price: 3490000 },
             ],
           },
         ])

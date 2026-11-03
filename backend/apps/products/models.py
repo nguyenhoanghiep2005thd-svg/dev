@@ -76,6 +76,8 @@ class Product(models.Model):
         verbose_name='Giá khuyến mãi (VNĐ)',
     )
     stock = models.PositiveIntegerField(default=0, verbose_name='Tồn kho')
+    # Ảnh từ CDN — dùng khi sản phẩm chưa có file upload (Render free không có disk bền vững)
+    image_url = models.URLField(blank=True, max_length=500, verbose_name='URL ảnh')
     # Thông số kỹ thuật lưu dạng JSON
     specs = models.JSONField(default=dict, blank=True, verbose_name='Thông số kỹ thuật')
     is_active = models.BooleanField(default=True, verbose_name='Hiển thị')

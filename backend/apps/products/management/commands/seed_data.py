@@ -8,6 +8,19 @@ from apps.products.models import Brand, Category, Product
 
 User = get_user_model()
 
+# Ảnh sản phẩm — URL ngoài (đã kiểm chứng còn sống), không phụ thuộc disk của Render
+PRODUCT_IMAGES = {
+    'iPhone 15 Pro Max':          'https://images.unsplash.com/photo-1695048133142-1a20484d2569?w=600&q=80',
+    'iPhone 15':                  'https://images.unsplash.com/photo-1664478546384-d57ffe74a78c?w=600&q=80',
+    'Samsung Galaxy S24 Ultra':   'https://images.unsplash.com/photo-1610945415295-d9bbf067e59c?w=600&q=80',
+    'Samsung Galaxy A55':         'https://images.unsplash.com/photo-1585060544812-6b45742d762f?w=600&q=80',
+    'Xiaomi 14':                  'https://images.unsplash.com/photo-1574944985070-8f3ebc6b79d2?w=600&q=80',
+    'Xiaomi Redmi Note 13':       'https://images.unsplash.com/photo-1580910051074-3eb694886505?w=600&q=80',
+    'OPPO Reno 12':               'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=600&q=80',
+    'Xiaomi Redmi 13C':           'https://images.unsplash.com/photo-1598327105666-5b89351aff97?w=600&q=80',
+}
+DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1512499617640-c74ae3a79d37?w=600&q=80'
+
 
 class Command(BaseCommand):
     help = 'Tạo dữ liệu mẫu cho development'
@@ -71,6 +84,7 @@ class Command(BaseCommand):
                     price=p['price'],
                     sale_price=p['sale_price'],
                     stock=p['stock'],
+                    image_url=PRODUCT_IMAGES.get(p['name'], DEFAULT_IMAGE),
                     description=f'Mô tả chi tiết cho {p["name"]}',
                     specs={
                         'RAM': '8GB',
@@ -82,4 +96,16 @@ class Command(BaseCommand):
                 created += 1
 
         self.stdout.write(self.style.SUCCESS(f'✓ Tạo {created} sản phẩm'))
+
+        # ── Backfill ảnh cho sản phẩm đã tồn tại nhưng chưa có ảnh ──
+        no_image = [
+            p for p in Product.objects.filter(image_url='')
+            if not p.images.exists()
+        ]
+        for product in no_image:
+            product.image_url = PRODUCT_IMAGES.get(product.name, DEFAULT_IMAGE)
+            product.save(update_fields=['image_url'])
+        if no_image:
+            self.stdout.write(self.style.SUCCESS(f'✓ Bổ sung ảnh cho {len(no_image)} sản phẩm cũ'))
+
         self.stdout.write(self.style.SUCCESS('\n✅ Seed data hoàn tất!'))

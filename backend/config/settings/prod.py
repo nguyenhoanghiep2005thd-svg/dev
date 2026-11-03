@@ -1,6 +1,5 @@
 from .base import *  # noqa: F401,F403
 from decouple import config, UndefinedValueError
-import os
 
 DEBUG = False
 
@@ -12,6 +11,25 @@ except UndefinedValueError:
     SECRET_KEY = secrets.token_urlsafe(50)
 
 ALLOWED_HOSTS = ['*']  # Render dùng proxy, cho phép tất cả host
+
+# ── HTTPS / proxy (Render terminate TLS phía trước) ──────────
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
+
+# CSRF — cần cho Django admin; JWT API (register/login) không dùng session CSRF
+# Chỉ chấp nhận origin đầy đủ (không wildcard), ví dụ https://phonestore-frontend.onrender.com
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip().rstrip('/')
+    for origin in config('CSRF_TRUSTED_ORIGINS', default='').split(',')
+    if origin.strip()
+]
+_frontend_url = config('FRONTEND_URL', default='').rstrip('/')
+if _frontend_url and _frontend_url not in CSRF_TRUSTED_ORIGINS:
+    CSRF_TRUSTED_ORIGINS.append(_frontend_url)
+
+# Cookie secure khi chạy HTTPS (admin/session)
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
 
 # ── Database ────────────────────────────────────────────────
 DATABASE_URL = config('DATABASE_URL', default=None)
@@ -38,13 +56,26 @@ else:
         }
     }
 
-# ── CORS — cho phép tất cả *.onrender.com + localhost
-CORS_ALLOW_ALL_ORIGINS  = False
-CORS_ALLOW_CREDENTIALS  = True
+# ── CORS — env CORS_ALLOWED_ORIGINS + FRONTEND_URL + regex *.onrender.com (base)
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOW_CREDENTIALS = True
 
-# ── Static
+_env_cors = [
+    origin.strip().rstrip('/')
+    for origin in config('CORS_ALLOWED_ORIGINS', default='').split(',')
+    if origin.strip()
+]
+_origins = list(CORS_ALLOWED_ORIGINS)  # noqa: F405
+for _origin in _env_cors + ([_frontend_url] if _frontend_url else []):
+    if _origin not in _origins:
+        _origins.append(_origin)
+CORS_ALLOWED_ORIGINS = _origins
+
+# ── Static / Media
 STATIC_ROOT = BASE_DIR / 'staticfiles'  # noqa: F405
 MEDIA_ROOT  = BASE_DIR / 'media'        # noqa: F405
+# Render free tier không có nginx đứng trước backend → Django tự serve /media/
+SERVE_MEDIA = config('SERVE_MEDIA', default=True, cast=bool)
 
 # ── Logging
 LOGGING = {

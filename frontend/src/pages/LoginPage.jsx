@@ -4,7 +4,7 @@ import { Smartphone, Eye, EyeOff, Mail, Lock, ShoppingCart } from 'lucide-react'
 import useAuthStore from '../store/authStore'
 import useCartStore from '../store/cartStore'
 import toast from 'react-hot-toast'
-import api from '../services/api'
+import api, { describeApiError } from '../services/api'
 
 export default function LoginPage() {
   const navigate  = useNavigate()
@@ -45,17 +45,30 @@ export default function LoginPage() {
         })
         tokens = { access: data.access, refresh: data.refresh }
 
-        const profileRes = await api.get('/auth/profile/', {
-          headers: { Authorization: `Bearer ${tokens.access}` },
-        })
-        user = profileRes.data
+        try {
+          const profileRes = await api.get('/auth/profile/', {
+            headers: { Authorization: `Bearer ${tokens.access}` },
+          })
+          user = profileRes.data
+        } catch (profileErr) {
+          const denied = profileErr?.response?.status === 401 || profileErr?.response?.status === 403
+          const wrapped = new Error(
+            denied
+              ? 'Đăng nhập được nhưng server từ chối tải hồ sơ — backend đang lỗi JWT/permission.'
+              : describeApiError(profileErr, 'Đăng nhập được nhưng không tải được hồ sơ — kiểm tra log backend.')
+          )
+          wrapped.isHandled = true
+          throw wrapped
+        }
 
       } catch (apiErr) {
+        if (apiErr?.isHandled) throw apiErr
+
         const isOffline = ['ERR_NETWORK','ECONNREFUSED','ECONNABORTED'].includes(apiErr?.code)
                        || apiErr?.message?.includes('timeout')
 
-        if (isOffline) {
-          // Backend đang spin down — dùng demo mode
+        // Demo mode chỉ khi đang phát triển local — production phải dùng API thật
+        if (isOffline && import.meta.env.DEV) {
           await new Promise(r => setTimeout(r, 400))
           if (form.email === 'admin@phonestore.com' && form.password === 'admin123456') {
             user   = { id: 1, email: form.email, full_name: 'Admin', role: 'admin', phone: '' }
@@ -66,11 +79,11 @@ export default function LoginPage() {
           } else {
             throw new Error('Email hoặc mật khẩu không đúng.')
           }
+        } else if (apiErr?.response?.status === 400) {
+          const d = apiErr.response.data
+          throw new Error(d?.non_field_errors?.[0] || d?.detail || 'Email hoặc mật khẩu không đúng.')
         } else {
-          const msg = apiErr?.response?.data?.detail
-            || apiErr?.response?.data?.non_field_errors?.[0]
-            || 'Email hoặc mật khẩu không đúng.'
-          throw new Error(msg)
+          throw new Error(describeApiError(apiErr, 'Đăng nhập thất bại. Vui lòng thử lại.'))
         }
       }
 

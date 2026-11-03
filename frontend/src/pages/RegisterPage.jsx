@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Smartphone, Eye, EyeOff, Mail, Lock, User, Phone } from 'lucide-react'
 import useAuthStore from '../store/authStore'
 import toast from 'react-hot-toast'
-import api from '../services/api'
+import api, { describeApiError } from '../services/api'
 
 /* ── Field component ở NGOÀI RegisterPage — tránh re-mount khi state thay đổi ── */
 function Field({ icon: Icon, name, label, type = 'text', placeholder,
@@ -90,31 +90,30 @@ export default function RegisterPage() {
       toast.success('Đăng ký thành công! Chào mừng bạn đến PhoneStore 🎉')
       navigate('/')
     } catch (err) {
-      if (err?.code === 'ERR_NETWORK' || err?.code === 'ECONNABORTED' || err?.message?.includes('timeout')) {
-        // Timeout hoặc network — thử fallback demo
-        if (import.meta.env.DEV || err?.code === 'ERR_NETWORK') {
-          login(
-            { id: Date.now(), email: form.email, full_name: form.full_name, phone: form.phone, role: 'user' },
-            { access: 'demo-token', refresh: 'demo-refresh' }
-          )
-          toast.success('Đăng ký thành công! (demo mode)')
-          navigate('/')
-        } else {
-          toast.error('Server đang khởi động, vui lòng thử lại sau 30 giây.')
-        }
+      const isOffline = err?.code === 'ERR_NETWORK'
+        || err?.code === 'ECONNABORTED'
+        || err?.message?.includes('timeout')
+
+      if (isOffline && import.meta.env.DEV) {
+        // Demo mode chỉ khi phát triển local
+        login(
+          { id: Date.now(), email: form.email, full_name: form.full_name, phone: form.phone, role: 'user' },
+          { access: 'demo-token', refresh: 'demo-refresh' }
+        )
+        toast.success('Đăng ký thành công! (demo mode)')
+        navigate('/')
+      } else if (isOffline) {
+        toast.error('Server đang khởi động, vui lòng thử lại sau 30 giây.')
+      } else if (err?.response?.status === 400 && typeof err?.response?.data === 'object') {
+        const data = err.response.data
+        const fieldErrors = {}
+        Object.entries(data).forEach(([k, v]) => {
+          fieldErrors[k] = Array.isArray(v) ? v[0] : String(v)
+        })
+        setErrors(fieldErrors)
+        toast.error('Vui lòng kiểm tra lại thông tin.')
       } else {
-        const data = err?.response?.data
-        if (data && typeof data === 'object') {
-          // Hiển thị lỗi từng field từ backend
-          const fieldErrors = {}
-          Object.entries(data).forEach(([k, v]) => {
-            fieldErrors[k] = Array.isArray(v) ? v[0] : String(v)
-          })
-          setErrors(fieldErrors)
-          toast.error('Vui lòng kiểm tra lại thông tin.')
-        } else {
-          toast.error('Đăng ký thất bại. Vui lòng thử lại.')
-        }
+        toast.error(describeApiError(err, 'Đăng ký thất bại. Vui lòng thử lại.'))
       }
     } finally {
       setLoading(false)
