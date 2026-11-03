@@ -62,7 +62,8 @@ USER appuser
 # Render inject PORT tự động, gunicorn bind vào đó
 EXPOSE 8000
 
-# Migrate/collectstatic KHÔNG được làm chết web process:
+# Migrate/collectstatic/seed KHÔNG được làm chết web process:
 # nếu DB lỗi, gunicorn vẫn phải start để Render không báo 502 vĩnh viễn.
-# Bản đúng: đặt Pre-Deploy Command trong Render = "python manage.py migrate --noinput && python manage.py seed_data"
-CMD ["sh", "-c", "python manage.py migrate --noinput || echo '[warn] migrate that bai — web van chay'; python manage.py collectstatic --noinput || echo '[warn] collectstatic that bai'; exec gunicorn config.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 2 --timeout 120"]
+# seed_data idempotent (get_or_create + kiểm tra tồn tại) nên chạy lại mỗi boot là an toàn,
+# nhờ đó sản phẩm luôn có ảnh mà không cần ai vào dashboard đặt Pre-Deploy Command.
+CMD ["sh", "-c", "python manage.py migrate --noinput || echo '[warn] migrate that bai — web van chay'; python manage.py collectstatic --noinput || echo '[warn] collectstatic that bai'; python manage.py seed_data || echo '[warn] seed_data that bai — web van chay'; exec gunicorn config.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 2 --timeout 120"]

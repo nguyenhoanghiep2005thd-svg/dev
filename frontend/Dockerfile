@@ -30,10 +30,12 @@ RUN apk add --no-cache gettext \
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Mặc định: docker-compose (backend service trong cùng network)
-# Render override bằng envVars BACKEND_URL
+# Mặc định trỏ thẳng service backend đã deploy trên Render, để frontend chạy được
+# mà không cần ai vào dashboard thêm env BACKEND_URL.
+# docker-compose ghi đè bằng BACKEND_URL=http://backend:8000 (service nội bộ), Render
+# ghi đè nếu bạn tự set env — env luôn thắng default này.
 ENV PORT=80 \
-    BACKEND_URL=http://backend:8000
+    BACKEND_URL=https://phonestore-backend-oiip.onrender.com
 
 EXPOSE 80
 
@@ -41,4 +43,4 @@ EXPOSE 80
 # BACKEND_URL được normalize (bỏ dấu / cuối — để lại sẽ thành //api/v1 → 404 mọi request)
 # và cảnh báo nếu vẫn là default docker-compose: trên Render tên "backend" không resolve
 # được → nginx [emerg] host not found in upstream → container crash-loop.
-CMD ["sh", "-c", "BACKEND_URL=$(printf '%s' \"$BACKEND_URL\" | sed 's:/*$::'); export BACKEND_URL; case \"$BACKEND_URL\" in http://*|https://*) ;; *) echo \"[ERROR] BACKEND_URL khong hop le hoac rong: '$BACKEND_URL'\"; exit 1;; esac; if echo \"$BACKEND_URL\" | grep -q '://backend:'; then echo \"[ERROR] BACKEND_URL=$BACKEND_URL la default cua docker-compose. Tren Render: Environment -> them BACKEND_URL = URL that cua service backend (vidu https://ten-backend.onrender.com), roi redeploy.\"; fi; envsubst '${PORT} ${BACKEND_URL}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]
+CMD ["sh", "-c", "BACKEND_URL=$(printf '%s' \"$BACKEND_URL\" | sed 's:/*$::'); export BACKEND_URL; case \"$BACKEND_URL\" in http://*|https://*) ;; *) echo \"[ERROR] BACKEND_URL khong hop le hoac rong: '$BACKEND_URL'\"; exit 1;; esac; if echo \"$BACKEND_URL\" | grep -q '://backend:'; then echo \"[info] BACKEND_URL=$BACKEND_URL (docker-compose network). Chay tren Render thi set env BACKEND_URL = https://phonestore-backend-oiip.onrender.com\"; fi; envsubst '${PORT} ${BACKEND_URL}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]

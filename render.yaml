@@ -48,5 +48,6 @@ services:
       - key: VITE_API_URL
         value: ""
       # Runtime: nginx proxy /api/ → backend Render
+      # Tên thật của service backend (xem Render → backend → External URL)
       - key: BACKEND_URL
-        value: "https://phonestore-backend.onrender.com"
+        value: "https://phonestore-backend-oiip.onrender.com"

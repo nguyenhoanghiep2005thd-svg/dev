@@ -32,6 +32,10 @@ urlpatterns = [
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
+
+    # Root — Render khai báo healthCheckPath là "/" vẫn phải thấy 200,
+    # nếu không Django 404 → Render kết luận service chết và restart liên tục
+    path('', health, name='root'),
 ]
 
 # Serve media files trong development
