@@ -8,10 +8,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# VITE_* phải có lúc build — Vite nhúng vào bundle
-# Render/Docker Compose truyền qua build-arg / env
-ARG VITE_API_URL=
-ENV VITE_API_URL=$VITE_API_URL
+# Không nhận VITE_API_URL: API luôn là relative /api/v1 (nginx proxy ở stage 2).
+# Trước đây env này được bake vào bundle, và một giá trị sai trên dashboard
+# làm mọi request treo vĩnh viễn mà không log dòng nào.
 
 COPY package.json ./
 RUN npm install

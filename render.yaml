@@ -47,9 +47,6 @@ services:
     # khi backend free đang ngủ, edge trả 429 "Just a moment" → frontend bị báo chết oan.
     healthCheckPath: /
     envVars:
-      # Để trống → bundle dùng relative /api/v1 → nginx proxy (tránh CORS)
-      - key: VITE_API_URL
-        value: ""
       # Runtime: nginx proxy /api/ → backend Render
       # Tên thật của service backend (xem Render → backend → External URL)
       - key: BACKEND_URL

@@ -66,9 +66,6 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       target: runner          # chỉ lấy nginx stage
-      args:
-        # Relative /api/v1 + nginx proxy → không cần bake absolute URL
-        VITE_API_URL: ""
     container_name: phonestore_frontend
     restart: unless-stopped
     environment:

@@ -1,11 +1,10 @@
 import axios from 'axios'
 import useAuthStore from '../store/authStore'
 
-// Production Docker: ưu tiên relative /api/v1 (nginx proxy) nếu không set VITE_API_URL
-// Dev: Vite proxy /api → localhost:8000
-const BASE_URL = import.meta.env.VITE_API_URL
-  ? `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api/v1`
-  : '/api/v1'
+// API luôn cùng origin với trang: dev → vite proxy, Docker/Render → nginx proxy (/api/).
+// Không đọc VITE_API_URL lúc build: một giá trị sai trên dashboard Render bị nhúng thẳng
+// vào bundle và làm MỌI request treo vô hạn (đăng nhập/đăng ký không bao giờ trả lời).
+const BASE_URL = '/api/v1'
 
 const api = axios.create({
   baseURL: BASE_URL,

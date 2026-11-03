@@ -13,9 +13,4 @@ export default defineConfig({
       },
     },
   },
-  // Production build: VITE_API_URL inject lúc build
-  // Nếu không có VITE_API_URL → dùng '' (relative, hoạt động với nginx proxy)
-  define: {
-    __API_BASE__: JSON.stringify(process.env.VITE_API_URL || ''),
-  },
 })
