@@ -38,6 +38,7 @@ ENV PORT=80 \
 EXPOSE 80
 
 # Render inject PORT (thường 10000); docker-compose dùng 80
-# BACKEND_URL bắt buộc đúng trên Render — nếu trỏ "http://backend:8000" (default
-# của docker-compose) thì nginx không resolve được và container chết ngay.
-CMD ["sh", "-c", "if echo \"$BACKEND_URL\" | grep -q '://backend:'; then echo \"[ERROR] BACKEND_URL=$BACKEND_URL — trên Render phải là URL thật của service backend (https://<tên-backend>.onrender.com)\"; fi; envsubst '${PORT} ${BACKEND_URL}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]
+# BACKEND_URL được normalize (bỏ dấu / cuối — để lại sẽ thành //api/v1 → 404 mọi request)
+# và cảnh báo nếu vẫn là default docker-compose: trên Render tên "backend" không resolve
+# được → nginx [emerg] host not found in upstream → container crash-loop.
+CMD ["sh", "-c", "BACKEND_URL=$(printf '%s' \"$BACKEND_URL\" | sed 's:/*$::'); export BACKEND_URL; case \"$BACKEND_URL\" in http://*|https://*) ;; *) echo \"[ERROR] BACKEND_URL khong hop le hoac rong: '$BACKEND_URL'\"; exit 1;; esac; if echo \"$BACKEND_URL\" | grep -q '://backend:'; then echo \"[ERROR] BACKEND_URL=$BACKEND_URL la default cua docker-compose. Tren Render: Environment -> them BACKEND_URL = URL that cua service backend (vidu https://ten-backend.onrender.com), roi redeploy.\"; fi; envsubst '${PORT} ${BACKEND_URL}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]
