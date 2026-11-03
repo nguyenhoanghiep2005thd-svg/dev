@@ -42,6 +42,9 @@ services:
     dockerContext: frontend
     plan: free
     region: singapore
+    # "/" = nginx phục vụ static, không proxy sang backend.
+    # Nếu đặt /api/... thì mỗi 10s Render gửi một request máy-móc tới backend;
+    # khi backend free đang ngủ, edge trả 429 "Just a moment" → frontend bị báo chết oan.
     healthCheckPath: /
     envVars:
       # Để trống → bundle dùng relative /api/v1 → nginx proxy (tránh CORS)

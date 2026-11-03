@@ -23,6 +23,15 @@ api.interceptors.response.use(
       err.config.timeout  = 90000 // retry với timeout dài hơn
       return api(err.config)
     }
+
+    // Render free tier: request tới instance đang ngủ bị edge trả 429 ngay,
+    // nhưng chính request đó đã đánh thức service → chờ 1 nhịp rồi thử lại 1 lần.
+    if (err?.response?.status === 429 && err.config && !err.config._retried429) {
+      err.config._retried429 = true
+      await new Promise(r => setTimeout(r, 12000))
+      return api(err.config)
+    }
+
     return Promise.reject(err)
   }
 )
@@ -45,6 +54,14 @@ const isAuthEndpoint = (url = '') =>
 export function describeApiError(err, fallback = 'Có lỗi xảy ra. Vui lòng thử lại.') {
   const status = err?.response?.status
   const code = err?.code
+  const body = err?.response?.data
+
+  // Render đứng sau Cloudflare. Khi host bị giới hạn request, edge trả về trang
+  // "Just a moment…" (HTML) thay vì JSON của Django — triệu chứng: đăng nhập/đăng ký
+  // báo lỗi lạ dù backend vẫn sống.
+  if (typeof body === 'string' && body.includes('Just a moment')) {
+    return 'Cloudflare đang chặn request (chưa tới được backend). Chờ 1–2 phút rồi thử lại.'
+  }
 
   if (!status) {
     if (code === 'ECONNABORTED' || err?.message?.includes('timeout')) {
@@ -56,6 +73,9 @@ export function describeApiError(err, fallback = 'Có lỗi xảy ra. Vui lòng 
     return fallback
   }
 
+  if (status === 429) {
+    return 'Quá nhiều request nên Render tạm chặn (HTTP 429). Chờ 1–2 phút rồi thử lại.'
+  }
   if (status === 401) return 'Email hoặc mật khẩu không đúng.'
   if (status === 403) return 'Bạn không có quyền thực hiện thao tác này.'
   if (status === 404 && typeof err.response.data === 'string') {

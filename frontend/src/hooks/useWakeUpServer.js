@@ -13,9 +13,9 @@ export function useWakeUpServer() {
     let cancelled = false
 
     const ping = async () => {
-      // Thử get products — endpoint public, không cần auth
+      // /health/ trả về JSON nhỏ, không chạm DB → rẻ nhất cho edge của Render
       try {
-        await api.get('/products/', { timeout: 5000 })
+        await api.get('/health/', { timeout: 5000 })
         if (!cancelled) setIsReady(true)
         return
       } catch {
@@ -25,12 +25,14 @@ export function useWakeUpServer() {
       if (cancelled) return
       setIsWakingUp(true)
 
-      // Thử lại tối đa 6 lần, mỗi 10 giây (tổng 60 giây)
-      for (let i = 0; i < 6; i++) {
+      // Thử lại tối đa 8 lần, mỗi 15 giây (tổng 120 giây).
+      // Giãn nhịp so với 10s cũ: Render free tier đặt Cloudflare challenge + HTTP 429
+      // khi cùng một host bị poll quá dày, nên ping nhiều là tự khoá API của chính mình.
+      for (let i = 0; i < 8; i++) {
         if (cancelled) return
-        await new Promise(r => setTimeout(r, 10000))
+        await new Promise(r => setTimeout(r, 15000))
         try {
-          await api.get('/products/', { timeout: 15000 })
+          await api.get('/health/', { timeout: 20000 })
           if (!cancelled) {
             setIsWakingUp(false)
             setIsReady(true)
