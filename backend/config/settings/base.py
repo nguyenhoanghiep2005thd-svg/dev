@@ -6,7 +6,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-me-in-production')
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,0.0.0.0').split(',')
 
 # Application definition
 DJANGO_APPS = [
@@ -37,6 +37,7 @@ INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -66,17 +67,39 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
-# Database — overridden in dev.py / prod.py
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('DB_NAME', default='phonestore_db'),
-        'USER': config('DB_USER', default='postgres'),
-        'PASSWORD': config('DB_PASSWORD', default='postgres'),
-        'HOST': config('DB_HOST', default='localhost'),
-        'PORT': config('DB_PORT', default='5432'),
+# Database - overridden in dev.py / prod.py
+DB_ENGINE = config('DB_ENGINE', default='')
+USE_SQLITE = config('USE_SQLITE', default=False, cast=bool)
+
+if DB_ENGINE == 'sqlite3' or USE_SQLITE:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
+else:
+    DATABASE_URL = config('DATABASE_URL', default=None)
+    if DATABASE_URL:
+        import dj_database_url
+        DATABASES = {
+            'default': dj_database_url.parse(
+                DATABASE_URL,
+                conn_max_age=60,
+                conn_health_checks=True,
+            )
+        }
+    else:
+        DATABASES = {
+            'default': {
+                'ENGINE': config('DB_ENGINE', default='django.db.backends.postgresql'),
+                'NAME': config('DB_NAME', default='phonestore_db'),
+                'USER': config('DB_USER', default='postgres'),
+                'PASSWORD': config('DB_PASSWORD', default='postgres'),
+                'HOST': config('DB_HOST', default='localhost'),
+                'PORT': config('DB_PORT', default='5432'),
+            }
+        }
 
 # Custom user model
 AUTH_USER_MODEL = 'accounts.User'
@@ -96,12 +119,21 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
+
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# ─── Django REST Framework ───────────────────────────────────────────────────
+# REST Framework
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
@@ -119,7 +151,7 @@ REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
-# ─── JWT ─────────────────────────────────────────────────────────────────────
+# JWT
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
@@ -129,7 +161,7 @@ SIMPLE_JWT = {
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
 }
 
-# ─── CORS ────────────────────────────────────────────────────────────────────
+# CORS
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',
@@ -137,16 +169,16 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:80',
     'http://localhost',
 ]
-# Regex: cho phép mọi subdomain *.onrender.com (Render có thể tạo URL random)
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r'^https://.*\.onrender\.com$',
+    r'^https://.*\.vercel\.app$',
 ]
 CORS_ALLOW_CREDENTIALS = True
 
-# ─── API Docs (drf-spectacular) ──────────────────────────────────────────────
+# API Docs
 SPECTACULAR_SETTINGS = {
     'TITLE': 'Phone Store API',
-    'DESCRIPTION': 'REST API cho website bán điện thoại',
+    'DESCRIPTION': 'REST API cho website PhoneStore',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
 }

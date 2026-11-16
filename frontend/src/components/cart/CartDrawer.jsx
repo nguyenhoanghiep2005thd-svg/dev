@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import {
   X, ShoppingCart, Trash2, Plus, Minus,
   ShoppingBag, LogIn, ArrowRight, Tag,
-  AlertCircle,
+  AlertCircle, Ticket, ChevronRight,
 } from 'lucide-react'
 import { useCart } from '../../hooks/useCart'
 
@@ -14,7 +14,8 @@ export default function CartDrawer() {
   const navigate = useNavigate()
   const {
     items, isOpen, loading,
-    totalItems, totalPrice, shippingFee, finalTotal,
+    totalItems, totalPrice, discountAmount, shippingFee, finalTotal,
+    appliedCoupon,
     closeCart, updateQuantity, removeItem, clearCart,
     isAuthenticated,
   } = useCart()
@@ -121,15 +122,15 @@ export default function CartDrawer() {
             </div>
           )}
 
-          {/* Empty */}
+          {/* Empty state */}
           {items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full gap-5 px-6 text-center">
+            <div className="flex flex-col items-center justify-center h-full gap-5 px-8 text-center">
               <div className="w-24 h-24 bg-gray-50 rounded-full flex items-center justify-center">
-                <ShoppingBag className="w-12 h-12 text-gray-200" />
+                <ShoppingBag className="w-11 h-11 text-gray-300" />
               </div>
               <div>
-                <p className="font-bold text-gray-700 text-lg mb-1">Giỏ hàng trống</p>
-                <p className="text-sm text-gray-400">Hãy thêm sản phẩm để bắt đầu mua sắm</p>
+                <p className="font-semibold text-gray-800 text-base mb-1">Giỏ hàng trống</p>
+                <p className="text-sm text-gray-400">Hãy thêm sản phẩm bạn yêu thích!</p>
               </div>
               {!isAuthenticated && (
                 <Link
@@ -153,13 +154,13 @@ export default function CartDrawer() {
           ) : (
             /* Items list */
             <ul className="divide-y divide-gray-50 px-4">
-              {items.map(({ id, product, quantity }) => {
-                const price      = product?.current_price ?? product?.price ?? 0
-                const isLow      = product?.stock > 0 && product?.stock <= 3
-                const isMaxed    = quantity >= (product?.stock ?? 99)
+              {items.map(({ id, product, quantity, color, storage }) => {
+                const price   = product?.current_price ?? product?.price ?? 0
+                const isLow   = product?.stock > 0 && product?.stock <= 3
+                const isMaxed = quantity >= (product?.stock ?? 99)
 
                 return (
-                  <li key={product?.id ?? id} className="py-4 flex gap-3">
+                  <li key={`${product?.id}-${color || ''}-${storage || ''}-${id}`} className="py-4 flex gap-3">
                     {/* Image */}
                     <Link
                       to={`/products/${product?.id}`}
@@ -200,6 +201,24 @@ export default function CartDrawer() {
                       <span className="text-[11px] text-primary-500 font-medium">
                         {product?.brand_name}
                       </span>
+
+                      {/* Variant badges (color / storage) */}
+                      {(color || storage) && (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {color && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-medium
+                                             bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                              🎨 {color}
+                            </span>
+                          )}
+                          {storage && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-medium
+                                             bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">
+                              💾 {storage}
+                            </span>
+                          )}
+                        </div>
+                      )}
 
                       {/* Stock warnings */}
                       {isLow && (
@@ -270,12 +289,40 @@ export default function CartDrawer() {
         {/* ── Footer ── */}
         {items.length > 0 && (
           <div className="border-t border-gray-100 bg-white flex-shrink-0">
+            {/* Coupon hint */}
+            {!appliedCoupon ? (
+              <Link
+                to="/cart"
+                onClick={closeCart}
+                className="flex items-center gap-2 px-5 py-2.5 text-sm text-primary-600
+                           hover:bg-primary-50 transition-colors border-b border-gray-100"
+              >
+                <Ticket className="w-4 h-4" />
+                <span className="flex-1 font-medium">Thêm mã giảm giá</span>
+                <ChevronRight className="w-4 h-4 opacity-50" />
+              </Link>
+            ) : (
+              <div className="flex items-center gap-2 px-5 py-2.5 bg-green-50 border-b border-green-100">
+                <Ticket className="w-4 h-4 text-green-600" />
+                <span className="text-sm text-green-700 font-semibold flex-1">
+                  🎉 {appliedCoupon.code} đã áp dụng
+                </span>
+                <span className="text-sm font-bold text-green-600">-{fmt(discountAmount)}</span>
+              </div>
+            )}
+
             {/* Summary */}
             <div className="px-5 pt-4 pb-3 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-500">Tạm tính ({totalItems} SP)</span>
                 <span className="font-semibold text-gray-800">{fmt(totalPrice)}</span>
               </div>
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-green-600">Giảm giá</span>
+                  <span className="font-semibold text-green-600">-{fmt(discountAmount)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-sm">
                 <span className="text-gray-500">Phí vận chuyển</span>
                 {shippingFee === 0 ? (

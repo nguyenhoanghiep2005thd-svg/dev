@@ -1,17 +1,19 @@
-/**
- * Cart API service — tất cả calls đến /api/v1/orders/cart/
- */
 import api from './api'
 
 /** Lấy giỏ hàng từ server */
 export async function fetchCart() {
   const { data } = await api.get('/orders/cart/')
-  return data   // { items, total_items, total_price, shipping_fee, final_total }
+  return data
 }
 
 /** Thêm sản phẩm vào giỏ */
-export async function addToCart(productId, quantity = 1) {
-  const { data } = await api.post('/orders/cart/add/', { product_id: productId, quantity })
+export async function addToCart(productId, quantity = 1, color = '', storage = '') {
+  const { data } = await api.post('/orders/cart/add/', {
+    product_id: productId,
+    quantity,
+    color,
+    storage,
+  })
   return data
 }
 
@@ -35,10 +37,14 @@ export async function clearCartApi() {
 
 /** Đồng bộ giỏ hàng local lên server sau khi đăng nhập */
 export async function syncCart(items) {
-  const payload = items.map(({ product, quantity }) => ({
-    product_id: product.id,
-    quantity,
+  const payload = items.map((i) => ({
+    product_id: i.product?.id || i.product_id,
+    quantity: i.quantity,
+    color: i.color || '',
+    storage: i.storage || '',
   }))
   const { data } = await api.post('/orders/cart/sync/', { items: payload })
   return data
 }
+
+export { deleteCartItem as removeCartItem, clearCartApi as clearCart }

@@ -1,4 +1,5 @@
 from django.db import models
+from django.conf import settings
 from django.utils.text import slugify
 import uuid
 
@@ -76,9 +77,7 @@ class Product(models.Model):
         verbose_name='Giá khuyến mãi (VNĐ)',
     )
     stock = models.PositiveIntegerField(default=0, verbose_name='Tồn kho')
-    # Ảnh từ CDN — dùng khi sản phẩm chưa có file upload (Render free không có disk bền vững)
     image_url = models.URLField(blank=True, max_length=500, verbose_name='URL ảnh')
-    # Thông số kỹ thuật lưu dạng JSON
     specs = models.JSONField(default=dict, blank=True, verbose_name='Thông số kỹ thuật')
     is_active = models.BooleanField(default=True, verbose_name='Hiển thị')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -91,7 +90,6 @@ class Product(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.slug:
-            # Thêm uuid ngắn để tránh trùng slug
             base_slug = slugify(self.name)
             unique_id = str(uuid.uuid4())[:8]
             self.slug = f'{base_slug}-{unique_id}'
@@ -102,12 +100,10 @@ class Product(models.Model):
 
     @property
     def current_price(self):
-        """Trả về giá hiện tại (khuyến mãi nếu có)."""
         return self.sale_price if self.sale_price else self.price
 
     @property
     def discount_percent(self):
-        """Phần trăm giảm giá."""
         if self.sale_price and self.price > 0:
             return int((1 - self.sale_price / self.price) * 100)
         return 0
@@ -115,6 +111,15 @@ class Product(models.Model):
     @property
     def in_stock(self):
         return self.stock > 0
+
+    @property
+    def avg_rating(self):
+        avg = self.reviews.aggregate(models.Avg('rating'))['rating__avg']
+        return round(float(avg), 1) if avg else 5.0
+
+    @property
+    def review_count(self):
+        return self.reviews.count()
 
 
 class ProductImage(models.Model):
@@ -139,9 +144,38 @@ class ProductImage(models.Model):
         return f'Ảnh {self.product.name} ({"chính" if self.is_primary else "phụ"})'
 
     def save(self, *args, **kwargs):
-        # Chỉ có một ảnh chính cho mỗi sản phẩm
         if self.is_primary:
             ProductImage.objects.filter(
                 product=self.product, is_primary=True
             ).exclude(pk=self.pk).update(is_primary=False)
         super().save(*args, **kwargs)
+
+
+class Review(models.Model):
+    """Đánh giá và nhận xét sản phẩm."""
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='reviews',
+        verbose_name='Sản phẩm',
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='reviews',
+        verbose_name='Người đánh giá',
+    )
+    rating = models.PositiveSmallIntegerField(default=5, verbose_name='Đánh giá (1-5 sao)')
+    comment = models.TextField(verbose_name='Nội dung đánh giá')
+    color = models.CharField(max_length=50, blank=True, verbose_name='Màu sắc đã chọn')
+    storage = models.CharField(max_length=50, blank=True, verbose_name='Dung lượng đã chọn')
+    likes = models.PositiveIntegerField(default=0, verbose_name='Lượt thích')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Đánh giá'
+        verbose_name_plural = 'Đánh giá'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.user.email} - {self.product.name} ({self.rating} sao)'

@@ -1,34 +1,19 @@
 import api from './api'
 
-/**
- * Tạo đơn hàng mới từ giỏ hàng hiện tại trên server.
- * @param {Object} payload
- *   - shipping_full_name
- *   - shipping_phone
- *   - shipping_email
- *   - shipping_address
- *   - payment_method  'cod' | 'bank' | 'online'
- *   - note
- */
-export async function createOrder(payload) {
-  const { data } = await api.post('/orders/create/', payload)
-  return data  // { id, status, total_price, message, items, ... }
-}
+export const fetchOrders = (params = {}) =>
+  api.get('/orders/', { params }).then((res) => res.data)
 
-/** Lấy danh sách đơn hàng của user */
-export async function fetchOrders() {
-  const { data } = await api.get('/orders/')
-  return data
-}
+export const fetchOrderDetail = (id) =>
+  api.get(`/orders/${id}/`).then((res) => res.data)
 
-/** Lấy chi tiết 1 đơn hàng */
-export async function fetchOrder(id) {
-  const { data } = await api.get(`/orders/${id}/`)
-  return data
-}
+export const createOrder = (data) =>
+  api.post('/orders/create/', data).then((res) => res.data)
 
-/** Hủy đơn hàng */
-export async function cancelOrder(id) {
-  const { data } = await api.post(`/orders/${id}/cancel/`)
-  return data
-}
+export const cancelOrder = (id) =>
+  api.post(`/orders/${id}/cancel/`).then((res) => res.data)
+
+export const fetchAvailableCoupons = () =>
+  api.get('/orders/validate-coupon/').then((res) => res.data)
+
+export const validateCoupon = (code, subtotal) =>
+  api.post('/orders/validate-coupon/', { code, subtotal }).then((res) => res.data)

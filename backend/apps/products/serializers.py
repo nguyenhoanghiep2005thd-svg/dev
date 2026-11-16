@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Brand, Category, Product, ProductImage
+from .models import Brand, Category, Product, ProductImage, Review
 
 
 class BrandSerializer(serializers.ModelSerializer):
@@ -39,21 +39,42 @@ class ProductImageSerializer(serializers.ModelSerializer):
         return request.build_absolute_uri(url) if request else url
 
 
+class ReviewSerializer(serializers.ModelSerializer):
+    user_name = serializers.SerializerMethodField()
+    user_avatar = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Review
+        fields = (
+            'id', 'product', 'user', 'user_name', 'user_avatar',
+            'rating', 'comment', 'color', 'storage', 'likes', 'created_at',
+        )
+        read_only_fields = ('id', 'product', 'user', 'user_name', 'user_avatar', 'likes', 'created_at')
+
+    def get_user_name(self, obj):
+        return getattr(obj.user, 'full_name', '') or obj.user.email.split('@')[0]
+
+    def get_user_avatar(self, obj):
+        name = getattr(obj.user, 'full_name', '') or obj.user.email
+        return name[0].upper() if name else 'U'
+
+
 class ProductListSerializer(serializers.ModelSerializer):
-    """Serializer gọn cho danh sách sản phẩm."""
     brand_name = serializers.CharField(source='brand.name', read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
     primary_image = serializers.SerializerMethodField()
     current_price = serializers.ReadOnlyField()
     discount_percent = serializers.ReadOnlyField()
     in_stock = serializers.ReadOnlyField()
+    avg_rating = serializers.ReadOnlyField()
+    review_count = serializers.ReadOnlyField()
 
     class Meta:
         model = Product
         fields = (
             'id', 'name', 'slug', 'brand_name', 'category_name',
             'price', 'sale_price', 'current_price', 'discount_percent',
-            'in_stock', 'primary_image',
+            'in_stock', 'primary_image', 'avg_rating', 'review_count', 'specs',
         )
 
     def get_primary_image(self, obj):
@@ -67,7 +88,6 @@ class ProductListSerializer(serializers.ModelSerializer):
 
 
 class ProductDetailSerializer(serializers.ModelSerializer):
-    """Serializer đầy đủ cho trang chi tiết sản phẩm."""
     brand = BrandSerializer(read_only=True)
     category = CategorySerializer(read_only=True)
     brand_id = serializers.PrimaryKeyRelatedField(
@@ -77,10 +97,13 @@ class ProductDetailSerializer(serializers.ModelSerializer):
         queryset=Category.objects.all(), source='category', write_only=True, required=False
     )
     images = ProductImageSerializer(many=True, read_only=True)
+    reviews = ReviewSerializer(many=True, read_only=True)
     primary_image = serializers.SerializerMethodField()
     current_price = serializers.ReadOnlyField()
     discount_percent = serializers.ReadOnlyField()
     in_stock = serializers.ReadOnlyField()
+    avg_rating = serializers.ReadOnlyField()
+    review_count = serializers.ReadOnlyField()
 
     class Meta:
         model = Product
@@ -88,7 +111,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
             'id', 'name', 'slug', 'brand', 'brand_id', 'category', 'category_id',
             'description', 'price', 'sale_price', 'current_price', 'discount_percent',
             'stock', 'in_stock', 'specs', 'is_active', 'image_url', 'primary_image',
-            'images', 'created_at', 'updated_at',
+            'images', 'reviews', 'avg_rating', 'review_count', 'created_at', 'updated_at',
         )
         read_only_fields = ('slug', 'created_at', 'updated_at')
 
@@ -103,7 +126,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
 
 
 class ProductImageUploadSerializer(serializers.ModelSerializer):
-    """Upload ảnh cho sản phẩm."""
     class Meta:
         model = ProductImage
         fields = ('id', 'product', 'image', 'alt_text', 'is_primary', 'order')
+        read_only_fields = ('id', 'product')

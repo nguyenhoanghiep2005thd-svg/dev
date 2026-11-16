@@ -1,242 +1,213 @@
-/**
- * Cart Store — Zustand
- *
- * Chiến lược 2 lớp:
- *   - Guest (chưa đăng nhập): lưu local localStorage
- *   - Auth  (đã đăng nhập):   sync với backend API, local là cache
- *
- * Khi user đăng nhập → gọi syncWithServer() để đẩy local cart lên server
- * Khi thao tác cart → gọi API, nếu lỗi → rollback local state
- */
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import {
-  fetchCart,
-  addToCart,
-  updateCartItem,
-  deleteCartItem,
-  clearCartApi,
-  syncCart,
-} from '../services/cartService'
+import toast from 'react-hot-toast'
+import useAuthStore from './authStore'
+import * as cartApi from '../services/cartService'
+
+const SHIPPING_THRESHOLD = 1_000_000
+const SHIPPING_FEE       = 30_000
+
+function getItemKey(productId, color = '', storage = '') {
+  return `${productId}__${color}__${storage}`
+}
 
 const useCartStore = create(
   persist(
     (set, get) => ({
-      /* ── State ─────────────────────────────────────────── */
-      items:    [],    // [{ id?, product, quantity }]
-      isOpen:   false,
-      loading:  false,
-      synced:   false, // true sau khi đã fetch từ server
+      items: [],
+      isOpen: false,
+      loading: false,
+      appliedCoupon: null,
 
-      /* ── Drawer ────────────────────────────────────────── */
-      openCart:   () => set({ isOpen: true }),
-      closeCart:  () => set({ isOpen: false }),
-      toggleCart: () => set(s => ({ isOpen: !s.isOpen })),
+      openCart:  () => set({ isOpen: true }),
+      closeCart: () => set({ isOpen: false }),
 
-      /* ── Computed ──────────────────────────────────────── */
-      totalItems: () => get().items.reduce((s, i) => s + i.quantity, 0),
-
-      totalPrice: () =>
-        get().items.reduce(
-          (s, i) => s + (i.product?.current_price ?? i.product?.price ?? 0) * i.quantity,
-          0
-        ),
-
-      shippingFee: () => {
-        const total = get().totalPrice()
-        return total >= 1_000_000 ? 0 : 30_000
+      applyCoupon: (coupon) => {
+        set({ appliedCoupon: coupon })
+        toast.success(`Đã áp dụng mã ${coupon.code}! Giảm ${new Intl.NumberFormat('vi-VN').format(coupon.discount)}đ`)
       },
 
-      finalTotal: () => get().totalPrice() + get().shippingFee(),
+      removeCoupon: () => {
+        set({ appliedCoupon: null })
+        toast.success('Đã hủy áp dụng mã giảm giá')
+      },
 
-      /* ── Fetch cart từ server (sau khi login) ──────────── */
-      fetchFromServer: async () => {
-        set({ loading: true })
-        try {
-          const data = await fetchCart()
-          // data.items từ server có dạng: { id, product: {...}, quantity, subtotal }
-          const items = (data.items || []).map(item => ({
-            id:       item.id,
-            product:  normalizeProduct(item.product),
-            quantity: item.quantity,
-          }))
-          set({ items, synced: true, loading: false })
-        } catch {
-          set({ loading: false })
+      addItem: async (product, quantity = 1, variant = {}) => {
+        const { color = '', storage = '' } = variant
+        const token = useAuthStore.getState().accessToken
+        const key = getItemKey(product.id, color, storage)
+
+        if (token) {
+          try {
+            set({ loading: true })
+            await cartApi.addToCart(product.id, quantity)
+            await get().fetchCart()
+            set({ isOpen: true })
+            toast.success(`Đã thêm "${product.name}" vào giỏ!`)
+            return true
+          } catch (err) {
+            const msg = err.response?.data?.quantity?.[0]
+              || err.response?.data?.error
+              || 'Không thể thêm vào giỏ hàng.'
+            toast.error(msg)
+            return false
+          } finally {
+            set({ loading: false })
+          }
         }
+
+        const items = [...get().items]
+        const existingIdx = items.findIndex(
+          i => getItemKey(i.product.id, i.color, i.storage) === key
+        )
+
+        if (existingIdx > -1) {
+          const currentQty = items[existingIdx].quantity
+          const newQty = currentQty + quantity
+          if (product.stock && newQty > product.stock) {
+            toast.error(`Chỉ còn ${product.stock} sản phẩm trong kho.`)
+            return false
+          }
+          items[existingIdx] = { ...items[existingIdx], quantity: newQty }
+        } else {
+          items.push({
+            id: key,
+            product,
+            quantity,
+            color,
+            storage,
+          })
+        }
+
+        set({ items, isOpen: true })
+        toast.success(`Đã thêm "${product.name}" vào giỏ!`)
+        return true
       },
 
-      /* ── Sync local → server khi vừa đăng nhập ─────────── */
-      syncWithServer: async () => {
-        const localItems = get().items
-        if (localItems.length === 0) {
-          // Không có local, chỉ fetch từ server
-          await get().fetchFromServer()
+      updateQuantity: async (itemId, quantity) => {
+        if (quantity < 1) return get().removeItem(itemId)
+        const token = useAuthStore.getState().accessToken
+
+        if (token && typeof itemId === 'number') {
+          try {
+            set({ loading: true })
+            await cartApi.updateCartItem(itemId, quantity)
+            await get().fetchCart()
+          } catch (err) {
+            toast.error(err.response?.data?.quantity?.[0] || 'Lỗi cập nhật số lượng.')
+          } finally {
+            set({ loading: false })
+          }
           return
         }
-        set({ loading: true })
+
+        const items = get().items.map(item =>
+          item.id === itemId ? { ...item, quantity } : item
+        )
+        set({ items })
+      },
+
+      removeItem: async (itemId) => {
+        const token = useAuthStore.getState().accessToken
+
+        if (token && typeof itemId === 'number') {
+          try {
+            set({ loading: true })
+            await cartApi.removeCartItem(itemId)
+            await get().fetchCart()
+            toast.success('Đã xóa sản phẩm khỏi giỏ.')
+          } catch {
+            toast.error('Không thể xóa sản phẩm.')
+          } finally {
+            set({ loading: false })
+          }
+          return
+        }
+
+        set({ items: get().items.filter(i => i.id !== itemId) })
+        toast.success('Đã xóa sản phẩm khỏi giỏ.')
+      },
+
+      clearCart: async () => {
+        const token = useAuthStore.getState().accessToken
+        if (token) {
+          try {
+            await cartApi.clearCart()
+          } catch {
+            // ignore
+          }
+        }
+        set({ items: [], appliedCoupon: null })
+      },
+
+      fetchCart: async () => {
+        const token = useAuthStore.getState().accessToken
+        if (!token) return
         try {
-          await syncCart(localItems)
-          await get().fetchFromServer()
+          set({ loading: true })
+          const res = await cartApi.fetchCart()
+          set({ items: res.data.items || [] })
         } catch {
+          // ignore
+        } finally {
           set({ loading: false })
         }
       },
 
-      /* ── Thêm sản phẩm ─────────────────────────────────── */
-      addItem: async (product, quantity = 1, isAuth = false) => {
-        // Kiểm tra hết hàng
-        if (!product.in_stock || product.stock === 0) {
-          throw new Error('Sản phẩm đã hết hàng.')
-        }
+      syncCart: async () => {
+        const token = useAuthStore.getState().accessToken
+        const localItems = get().items
+        if (!token || !localItems.length) return
 
-        // Kiểm tra không vượt stock
-        const existing = get().items.find(i => i.product.id === product.id)
-        const currentQty = existing?.quantity ?? 0
-        if (currentQty + quantity > product.stock) {
-          throw new Error(`Chỉ còn ${product.stock} sản phẩm. Giỏ hàng đã có ${currentQty}.`)
-        }
-
-        if (isAuth) {
-          // Optimistic update
-          _updateLocal(set, get, product, quantity, 'add')
-          try {
-            const item = await addToCart(product.id, quantity)
-            // Cập nhật id thật từ server
-            set(s => ({
-              items: s.items.map(i =>
-                i.product.id === product.id
-                  ? { ...i, id: item.id }
-                  : i
-              ),
-            }))
-          } catch (err) {
-            // Rollback
-            _updateLocal(set, get, product, -quantity, 'add')
-            throw err
-          }
-        } else {
-          // Guest: chỉ local
-          _updateLocal(set, get, product, quantity, 'add')
+        try {
+          const payload = localItems.map(i => ({
+            product_id: i.product.id,
+            quantity: i.quantity,
+            color: i.color || '',
+            storage: i.storage || '',
+          }))
+          await cartApi.syncCart(payload)
+          await get().fetchCart()
+        } catch {
+          // ignore
         }
       },
 
-      /* ── Cập nhật số lượng ─────────────────────────────── */
-      updateQuantity: async (productId, newQty, isAuth = false) => {
-        if (newQty < 1) return
+      totalItems: () =>
+        get().items.reduce((sum, i) => sum + i.quantity, 0),
 
-        const item = get().items.find(i => i.product.id === productId)
-        if (!item) return
+      subtotal: () =>
+        get().items.reduce((sum, i) => {
+          const price = i.product?.current_price ?? i.product?.price ?? 0
+          return sum + price * i.quantity
+        }, 0),
 
-        // Kiểm tra stock
-        if (newQty > item.product.stock) {
-          throw new Error(`Chỉ còn ${item.product.stock} sản phẩm trong kho.`)
-        }
-
-        const prevQty = item.quantity
-
-        // Optimistic update
-        set(s => ({
-          items: s.items.map(i =>
-            i.product.id === productId ? { ...i, quantity: newQty } : i
-          ),
-        }))
-
-        if (isAuth && item.id) {
-          try {
-            await updateCartItem(item.id, newQty)
-          } catch (err) {
-            // Rollback
-            set(s => ({
-              items: s.items.map(i =>
-                i.product.id === productId ? { ...i, quantity: prevQty } : i
-              ),
-            }))
-            throw err
-          }
-        }
+      shippingFee: () => {
+        const sub = get().subtotal()
+        if (sub === 0) return 0
+        const coupon = get().appliedCoupon
+        if (coupon?.code === 'FREESHIP') return 0
+        return sub >= SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE
       },
 
-      /* ── Xóa 1 item ────────────────────────────────────── */
-      removeItem: async (productId, isAuth = false) => {
-        const item     = get().items.find(i => i.product.id === productId)
-        const snapshot = get().items
-
-        // Optimistic update
-        set(s => ({ items: s.items.filter(i => i.product.id !== productId) }))
-
-        if (isAuth && item?.id) {
-          try {
-            await deleteCartItem(item.id)
-          } catch (err) {
-            // Rollback
-            set({ items: snapshot })
-            throw err
-          }
-        }
+      discountAmount: () => {
+        const coupon = get().appliedCoupon
+        return coupon?.discount || 0
       },
 
-      /* ── Xóa toàn bộ ───────────────────────────────────── */
-      clearCart: async (isAuth = false) => {
-        const snapshot = get().items
-        set({ items: [] })
-
-        if (isAuth) {
-          try {
-            await clearCartApi()
-          } catch {
-            set({ items: snapshot })
-          }
-        }
+      finalTotal: () => {
+        const sub = get().subtotal()
+        if (sub === 0) return 0
+        const ship = get().shippingFee()
+        const disc = get().discountAmount()
+        return Math.max(0, sub - disc) + ship
       },
-
-      /* ── Reset khi logout ──────────────────────────────── */
-      resetCart: () => set({ items: [], synced: false }),
     }),
     {
-      name:        'phonestore-cart',
-      partialize:  s => ({ items: s.items }),
+      name: 'phonestore_cart',
+      partialize: (state) => ({ items: state.items, appliedCoupon: state.appliedCoupon }),
     }
   )
 )
-
-/* ── Helpers ───────────────────────────────────────────────────────────────── */
-
-/** Chuẩn hoá product từ API response về dạng local */
-function normalizeProduct(p) {
-  return {
-    id:            p.id,
-    name:          p.name,
-    slug:          p.slug,
-    brand_name:    p.brand_name,
-    price:         Number(p.price),
-    sale_price:    p.sale_price ? Number(p.sale_price) : null,
-    current_price: Number(p.current_price ?? p.sale_price ?? p.price),
-    discount_percent: p.discount_percent ?? 0,
-    stock:         p.stock ?? 0,
-    in_stock:      p.in_stock ?? p.stock > 0,
-    primary_image: p.primary_image ?? null,
-  }
-}
-
-/** Optimistic local cart update */
-function _updateLocal(set, get, product, deltaQty, mode) {
-  if (mode === 'add') {
-    const existing = get().items.find(i => i.product.id === product.id)
-    if (existing) {
-      set(s => ({
-        items: s.items.map(i =>
-          i.product.id === product.id
-            ? { ...i, quantity: i.quantity + deltaQty }
-            : i
-        ),
-      }))
-    } else {
-      set(s => ({
-        items: [...s.items, { product, quantity: deltaQty }],
-      }))
-    }
-  }
-}
 
 export default useCartStore

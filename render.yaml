@@ -1,5 +1,5 @@
-# render.yaml — Render Blueprint
-# Database: Neon PostgreSQL (external)
+# render.yaml — Render Blueprint cho PhoneStore
+# Hệ thống gồm 2 web services: backend (Django) + frontend (React + Nginx)
 
 services:
 
@@ -11,10 +11,6 @@ services:
     dockerContext: backend
     plan: free
     region: singapore
-    # Migrate + seed chạy ở instance riêng TRƯỚC khi web start.
-    # Nếu để trong CMD, chỉ cần DB lỗi là gunicorn không bao giờ boot → Render 502 vĩnh viễn.
-    preDeployCommand: "python manage.py migrate --noinput && python manage.py collectstatic --noinput && python manage.py seed_data"
-    # /api/v1/health/ không chạm DB → không bao giờ báo sai service chết
     healthCheckPath: /api/v1/health/
     envVars:
       - key: DJANGO_SETTINGS_MODULE
@@ -23,16 +19,17 @@ services:
         generateValue: true
       - key: DEBUG
         value: "False"
-      # DATABASE_URL — Neon connection string (bắt buộc, nếu thiếu sẽ 500/502)
       - key: DATABASE_URL
-        sync: false   # không sync từ database service — user tự điền
-      # URL frontend thật (CORS + CSRF admin) — PHẢI khớp tên service đã tạo trên dashboard
+        sync: false   # Dán link Neon / Render PostgreSQL vào đây
       - key: FRONTEND_URL
-        value: "https://phonestore-frontend.onrender.com"
+        fromService:
+          type: web
+          name: phonestore-frontend
+          property: host
       - key: CSRF_TRUSTED_ORIGINS
-        value: "https://phonestore-frontend.onrender.com"
+        value: "https://*.onrender.com"
       - key: CORS_ALLOWED_ORIGINS
-        value: "https://phonestore-frontend.onrender.com"
+        value: "https://*.onrender.com"
 
   # ── Frontend — React + Nginx ─────────────────────────────────
   - type: web
@@ -42,12 +39,10 @@ services:
     dockerContext: frontend
     plan: free
     region: singapore
-    # "/" = nginx phục vụ static, không proxy sang backend.
-    # Nếu đặt /api/... thì mỗi 10s Render gửi một request máy-móc tới backend;
-    # khi backend free đang ngủ, edge trả 429 "Just a moment" → frontend bị báo chết oan.
     healthCheckPath: /
     envVars:
-      # Runtime: nginx proxy /api/ → backend Render
-      # Tên thật của service backend (xem Render → backend → External URL)
       - key: BACKEND_URL
-        value: "https://phonestore-backend-oiip.onrender.com"
+        fromService:
+          type: web
+          name: phonestore-backend
+          property: host

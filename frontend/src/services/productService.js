@@ -1,39 +1,19 @@
 import api from './api'
 
-/**
- * Lấy danh sách sản phẩm với đầy đủ filter + phân trang.
- *
- * Params (tất cả optional):
- *   search, brand_slug, brand, category_slug, category,
- *   price_min, price_max, in_stock,
- *   ram, storage,            ← lọc trong specs (JSONB)
- *   ordering, page, page_size
- *
- * Trả về: { count, next, previous, results }
- */
-export async function fetchProducts(params = {}) {
-  // Lọc bỏ param rỗng / undefined trước khi gửi
-  const clean = Object.fromEntries(
-    Object.entries(params).filter(([, v]) => v !== '' && v !== undefined && v !== null)
-  )
-  const { data } = await api.get('/products/', { params: clean })
-  return data
-}
+export const fetchProducts = (params = {}) =>
+  api.get('/products/', { params }).then((res) => res.data)
 
-/** Lấy 1 sản phẩm theo id */
-export async function fetchProduct(id) {
-  const { data } = await api.get(`/products/${id}/`)
-  return data
-}
+export const fetchProductDetail = (id) =>
+  api.get(`/products/${id}/`).then((res) => res.data)
 
-/** Lấy danh sách hãng */
-export async function fetchBrands() {
-  const { data } = await api.get('/products/brands/')
-  return data
-}
+export const fetchBrands = () =>
+  api.get('/products/brands/').then((res) => res.data.results ?? res.data)
 
-/** Lấy danh sách danh mục */
-export async function fetchCategories() {
-  const { data } = await api.get('/products/categories/')
-  return data
-}
+export const fetchCategories = () =>
+  api.get('/products/categories/').then((res) => res.data.results ?? res.data)
+
+export const fetchProductReviews = (productId) =>
+  api.get(`/products/${productId}/reviews/`).then((res) => res.data.results ?? res.data)
+
+export const createProductReview = (productId, data) =>
+  api.post(`/products/${productId}/reviews/`, data).then((res) => res.data)

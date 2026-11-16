@@ -173,7 +173,7 @@ function ListProductRow({ product }) {
   const handleAdd = (e) => {
     e.preventDefault()
     e.stopPropagation()
-    addItem(product, 1)
+    addItem(product, 1, {})
     openCart()
     toast.success(`Đã thêm "${product.name}" vào giỏ`)
   }

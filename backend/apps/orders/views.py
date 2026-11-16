@@ -14,15 +14,94 @@ from .serializers import (
 from apps.accounts.permissions import IsAdmin, IsOwnerOrAdmin
 
 
-# ─── Cart ─────────────────────────────────────────────────────────────────────
+COUPONS = {
+    'PHONESTORE10': {
+        'code': 'PHONESTORE10',
+        'type': 'percent',
+        'value': 10,
+        'max_discount': 1000000,
+        'min_order': 0,
+        'description': 'Giảm 10% tối đa 1.000.000đ',
+    },
+    'CHAOBANMOI': {
+        'code': 'CHAOBANMOI',
+        'type': 'fixed',
+        'value': 200000,
+        'min_order': 2000000,
+        'description': 'Giảm 200.000đ cho đơn từ 2.000.000đ',
+    },
+    'FREESHIP': {
+        'code': 'FREESHIP',
+        'type': 'shipping',
+        'value': 30000,
+        'min_order': 0,
+        'description': 'Miễn phí vận chuyển toàn quốc',
+    },
+    'VIP500': {
+        'code': 'VIP500',
+        'type': 'fixed',
+        'value': 500000,
+        'min_order': 10000000,
+        'description': 'Giảm 500.000đ cho đơn từ 10.000.000đ',
+    },
+}
+
+
+class ValidateCouponView(APIView):
+    """
+    GET  /api/v1/orders/validate-coupon/ - Liệt kê coupon đang có
+    POST /api/v1/orders/validate-coupon/ - Kiểm tra coupon
+    """
+    permission_classes = (permissions.AllowAny,)
+
+    def get(self, request):
+        return Response([
+            {
+                'code': k,
+                'description': v['description'],
+                'min_order': v.get('min_order', 0),
+            }
+            for k, v in COUPONS.items()
+        ])
+
+    def post(self, request):
+        code = str(request.data.get('code', '')).strip().upper()
+        subtotal = float(request.data.get('subtotal', 0))
+
+        if not code:
+            return Response({'error': 'Vui lòng nhập mã giảm giá.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        coupon = COUPONS.get(code)
+        if not coupon:
+            return Response({'error': 'Mã giảm giá không tồn tại hoặc đã hết hạn.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if subtotal < coupon['min_order']:
+            min_fmt = f"{coupon['min_order']:,}đ"
+            return Response({
+                'error': f"Mã này chỉ áp dụng cho đơn từ {min_fmt} trở lên."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        discount = 0
+        if coupon['type'] == 'percent':
+            discount = min((subtotal * coupon['value']) / 100, coupon.get('max_discount', float('inf')))
+        elif coupon['type'] == 'fixed':
+            discount = coupon['value']
+        elif coupon['type'] == 'shipping':
+            discount = coupon['value']
+
+        discount = int(min(discount, subtotal))
+
+        return Response({
+            'code': code,
+            'discount': discount,
+            'description': coupon['description'],
+            'message': f"Áp dụng thành công! Giảm {discount:,}đ.",
+        })
+
 
 class CartListView(generics.ListAPIView):
-    """
-    GET /api/v1/orders/cart/
-    Xem giỏ hàng. Trả về items + total_items + total_price + shipping_fee + final_total.
-    """
-    serializer_class    = CartItemSerializer
-    permission_classes  = (permissions.IsAuthenticated,)
+    serializer_class = CartItemSerializer
+    permission_classes = (permissions.IsAuthenticated,)
 
     def get_queryset(self):
         return (
@@ -34,30 +113,23 @@ class CartListView(generics.ListAPIView):
         )
 
     def list(self, request, *args, **kwargs):
-        queryset      = self.get_queryset()
-        serializer    = self.get_serializer(queryset, many=True)
-        total_price   = sum(item.subtotal for item in queryset)
-
-        # Phí ship: miễn phí nếu >= 1.000.000đ
-        shipping_fee  = 0 if total_price >= 1_000_000 else 30_000
-        final_total   = total_price + shipping_fee
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        total_price = sum(item.subtotal for item in queryset)
+        shipping_fee = 0 if total_price >= 1_000_000 else 30_000
+        final_total = total_price + shipping_fee
 
         return Response({
-            'items':        serializer.data,
-            'total_items':  queryset.count(),
-            'total_price':  total_price,
+            'items': serializer.data,
+            'total_items': queryset.count(),
+            'total_price': total_price,
             'shipping_fee': shipping_fee,
-            'final_total':  final_total,
+            'final_total': final_total,
         })
 
 
 class CartItemAddView(generics.CreateAPIView):
-    """
-    POST /api/v1/orders/cart/add/
-    Thêm sản phẩm vào giỏ. Kiểm tra hết hàng + stock.
-    Body: { "product_id": 1, "quantity": 2 }
-    """
-    serializer_class   = CartItemSerializer
+    serializer_class = CartItemSerializer
     permission_classes = (permissions.IsAuthenticated,)
 
     def create(self, request, *args, **kwargs):
@@ -71,34 +143,23 @@ class CartItemAddView(generics.CreateAPIView):
 
 
 class CartItemUpdateView(generics.UpdateAPIView):
-    """
-    PATCH /api/v1/orders/cart/<id>/update/
-    Cập nhật số lượng. Kiểm tra stock.
-    Body: { "quantity": 3 }
-    """
-    serializer_class   = CartItemUpdateSerializer
+    serializer_class = CartItemUpdateSerializer
     permission_classes = (permissions.IsAuthenticated,)
-    http_method_names  = ['patch']
+    http_method_names = ['patch']
 
     def get_queryset(self):
         return CartItem.objects.filter(user=self.request.user).select_related('product')
 
     def update(self, request, *args, **kwargs):
-        instance   = self.get_object()
+        instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-
-        # Trả về cart item đầy đủ thông tin
         full = CartItemSerializer(instance, context={'request': request})
         return Response(full.data)
 
 
 class CartItemDeleteView(generics.DestroyAPIView):
-    """
-    DELETE /api/v1/orders/cart/<id>/delete/
-    Xóa 1 sản phẩm khỏi giỏ.
-    """
     permission_classes = (permissions.IsAuthenticated,)
 
     def get_queryset(self):
@@ -110,10 +171,6 @@ class CartItemDeleteView(generics.DestroyAPIView):
 
 
 class CartClearView(APIView):
-    """
-    DELETE /api/v1/orders/cart/clear/
-    Xóa toàn bộ giỏ hàng.
-    """
     permission_classes = (permissions.IsAuthenticated,)
 
     def delete(self, request):
@@ -125,23 +182,20 @@ class CartClearView(APIView):
 
 
 class CartSyncView(APIView):
-    """
-    POST /api/v1/orders/cart/sync/
-    Đồng bộ giỏ hàng local (guest) lên server sau khi đăng nhập.
-    Body: { "items": [{ "product_id": 1, "quantity": 2 }, ...] }
-    """
     permission_classes = (permissions.IsAuthenticated,)
 
     def post(self, request):
-        items   = request.data.get('items', [])
-        user    = request.user
-        errors  = []
-        synced  = 0
+        items = request.data.get('items', [])
+        user = request.user
+        synced = 0
+        errors = []
 
         with transaction.atomic():
             for item_data in items:
                 product_id = item_data.get('product_id')
-                quantity   = int(item_data.get('quantity', 1))
+                quantity = int(item_data.get('quantity', 1))
+                color = item_data.get('color', '')
+                storage = item_data.get('storage', '')
 
                 if not product_id or quantity < 1:
                     continue
@@ -160,14 +214,12 @@ class CartSyncView(APIView):
                 cart_item, created = CartItem.objects.get_or_create(
                     user=user,
                     product=product,
+                    color=color,
+                    storage=storage,
                     defaults={'quantity': min(quantity, product.stock)},
                 )
                 if not created:
-                    # Lấy max giữa local và server, không vượt stock
-                    cart_item.quantity = min(
-                        max(cart_item.quantity, quantity),
-                        product.stock,
-                    )
+                    cart_item.quantity = min(max(cart_item.quantity, quantity), product.stock)
                     cart_item.save()
                 synced += 1
 
@@ -178,13 +230,7 @@ class CartSyncView(APIView):
         })
 
 
-# ─── Order ────────────────────────────────────────────────────────────────────
-
 class OrderListView(generics.ListAPIView):
-    """
-    GET /api/v1/orders/
-    User xem lịch sử đơn hàng của mình.
-    """
     serializer_class = OrderSerializer
     permission_classes = (permissions.IsAuthenticated,)
 
@@ -193,95 +239,81 @@ class OrderListView(generics.ListAPIView):
 
 
 class OrderCreateView(generics.CreateAPIView):
-    """
-    POST /api/v1/orders/create/
-    Tạo đơn hàng từ giỏ hàng.
-    Body: { shipping_full_name, shipping_phone, shipping_email,
-            shipping_address, payment_method, note }
-    Trả về: order đầy đủ kèm mã đơn hàng.
-    """
-    serializer_class   = CreateOrderSerializer
+    serializer_class = CreateOrderSerializer
     permission_classes = (permissions.IsAuthenticated,)
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         order = serializer.save()
-
-        # Trả về order đầy đủ + message
         response_data = OrderSerializer(order, context={'request': request}).data
         response_data['message'] = f'Đặt hàng thành công! Mã đơn hàng #{order.id}.'
-
         return Response(response_data, status=status.HTTP_201_CREATED)
 
 
 class OrderDetailView(generics.RetrieveAPIView):
-    """
-    GET /api/v1/orders/<id>/
-    Xem chi tiết đơn hàng (chủ đơn hoặc admin).
-    """
     serializer_class = OrderSerializer
     permission_classes = (permissions.IsAuthenticated, IsOwnerOrAdmin)
-    queryset = Order.objects.prefetch_related('items')
+    lookup_field = 'pk'
+
+    def get_queryset(self):
+        if self.request.user.is_admin:
+            return Order.objects.all().prefetch_related('items')
+        return Order.objects.filter(user=self.request.user).prefetch_related('items')
 
 
 class OrderCancelView(APIView):
-    """
-    POST /api/v1/orders/<id>/cancel/
-    User tự hủy đơn hàng (chỉ được hủy khi đang ở trạng thái 'pending').
-    """
     permission_classes = (permissions.IsAuthenticated,)
 
     def post(self, request, pk):
         try:
             order = Order.objects.get(pk=pk, user=request.user)
         except Order.DoesNotExist:
-            return Response({'error': 'Không tìm thấy đơn hàng.'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'error': 'Đơn hàng không tồn tại.'}, status=status.HTTP_404_NOT_FOUND)
 
         if order.status != Order.Status.PENDING:
             return Response(
-                {'error': 'Chỉ có thể hủy đơn hàng đang chờ xác nhận.'},
+                {'error': f'Không thể hủy đơn hàng ở trạng thái "{order.get_status_display()}".'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Hoàn lại tồn kho
-        for item in order.items.select_related('product'):
-            if item.product:
-                item.product.stock += item.quantity
-                item.product.save(update_fields=['stock'])
+        with transaction.atomic():
+            order.status = Order.Status.CANCELLED
+            order.save()
 
-        order.status = Order.Status.CANCELLED
-        order.save(update_fields=['status'])
-        return Response({'message': 'Đơn hàng đã được hủy.'})
+            from apps.products.models import Product
+            for item in order.items.all():
+                if item.product:
+                    Product.objects.filter(pk=item.product.pk).update(
+                        stock=models.F('stock') + item.quantity
+                    )
 
+        return Response({'message': 'Hủy đơn hàng thành công.'})
 
-# ─── Admin Order Views ────────────────────────────────────────────────────────
 
 class AdminOrderListView(generics.ListAPIView):
-    """
-    GET /api/v1/orders/admin/
-    Admin xem tất cả đơn hàng.
-    Query: ?status=pending|confirmed|shipping|delivered|cancelled
-    """
     serializer_class = OrderSerializer
     permission_classes = (IsAdmin,)
-    queryset = Order.objects.prefetch_related('items').select_related('user')
-    filterset_fields = ('status',)
-    search_fields = ('shipping_full_name', 'shipping_phone', 'user__email')
-    ordering_fields = ('created_at', 'total_price')
+    search_fields = ('shipping_full_name', 'shipping_phone', 'id')
+    ordering_fields = ('created_at', 'total_price', 'status')
     ordering = ('-created_at',)
+
+    def get_queryset(self):
+        queryset = Order.objects.prefetch_related('items').all()
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        return queryset
 
 
 class AdminOrderDetailView(generics.RetrieveUpdateAPIView):
-    """
-    GET   /api/v1/orders/admin/<id>/  — Xem chi tiết
-    PATCH /api/v1/orders/admin/<id>/  — Cập nhật trạng thái
-    Body: { "status": "confirmed" }
-    """
-    queryset = Order.objects.prefetch_related('items').select_related('user')
     permission_classes = (IsAdmin,)
+    lookup_field = 'pk'
 
     def get_serializer_class(self):
-        if self.request.method in ('PUT', 'PATCH'):
+        if self.request.method in ['PUT', 'PATCH']:
             return UpdateOrderStatusSerializer
         return OrderSerializer
+
+    def get_queryset(self):
+        return Order.objects.prefetch_related('items').all()
