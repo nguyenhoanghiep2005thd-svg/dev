@@ -188,7 +188,7 @@ export default function CartDrawer() {
                           {product?.name}
                         </Link>
                         <button
-                          onClick={() => removeItem(product?.id)}
+                          onClick={() => removeItem(id)}
                           aria-label="Xóa sản phẩm"
                           className="flex-shrink-0 w-6 h-6 flex items-center justify-center
                                      rounded-lg text-gray-300 hover:text-red-500
@@ -232,7 +232,7 @@ export default function CartDrawer() {
                         {/* Qty controls */}
                         <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
                           <button
-                            onClick={() => updateQuantity(product?.id, quantity - 1)}
+                            onClick={() => updateQuantity(id, quantity - 1)}
                             disabled={quantity <= 1}
                             aria-label="Giảm số lượng"
                             className="w-7 h-7 flex items-center justify-center text-gray-500
@@ -244,7 +244,7 @@ export default function CartDrawer() {
                             {quantity}
                           </span>
                           <button
-                            onClick={() => updateQuantity(product?.id, quantity + 1)}
+                            onClick={() => updateQuantity(id, quantity + 1)}
                             disabled={isMaxed}
                             aria-label="Tăng số lượng"
                             className="w-7 h-7 flex items-center justify-center text-gray-500

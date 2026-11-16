@@ -226,12 +226,18 @@ export default function ProductDetailPage() {
 
   /* ── Actions ── */
   const handleAddToCart = async () => {
-    const ok = await addItem({ ...product, current_price: currentPrice }, qty)
+    const ok = await addItem({ ...product, current_price: currentPrice }, qty, {
+      color: selectedColor || '',
+      storage: selectedStorage || '',
+    })
     if (!ok) return
   }
 
   const handleBuyNow = async () => {
-    const ok = await addItem({ ...product, current_price: currentPrice }, qty)
+    const ok = await addItem({ ...product, current_price: currentPrice }, qty, {
+      color: selectedColor || '',
+      storage: selectedStorage || '',
+    })
     if (!ok) return
     navigate('/checkout')
   }

@@ -11,6 +11,16 @@ function getItemKey(productId, color = '', storage = '') {
   return `${productId}__${color}__${storage}`
 }
 
+function normalizeServerItem(item) {
+  return {
+    id: item.id,
+    product: item.product,
+    quantity: item.quantity,
+    color: item.color || '',
+    storage: item.storage || '',
+  }
+}
+
 const useCartStore = create(
   persist(
     (set, get) => ({
@@ -32,15 +42,33 @@ const useCartStore = create(
         toast.success('Đã hủy áp dụng mã giảm giá')
       },
 
+      fetchCart: async () => {
+        const token = useAuthStore.getState().accessToken
+        if (!token) return
+        try {
+          set({ loading: true })
+          const res = await cartApi.fetchCart()
+          // res is already axios response.data: { items: [...], total_items, ... }
+          const rawItems = res?.items ?? res?.data?.items ?? (Array.isArray(res) ? res : [])
+          const items = rawItems.map(normalizeServerItem)
+          set({ items })
+        } catch (err) {
+          console.error('Failed to fetch cart:', err)
+        } finally {
+          set({ loading: false })
+        }
+      },
+
       addItem: async (product, quantity = 1, variant = {}) => {
-        const { color = '', storage = '' } = variant
+        const color = variant.color || (Array.isArray(product.specs?.colors) ? product.specs.colors[0] : '') || ''
+        const storage = variant.storage || (Array.isArray(product.specs?.storage) ? product.specs.storage[0] : '') || ''
         const token = useAuthStore.getState().accessToken
         const key = getItemKey(product.id, color, storage)
 
         if (token) {
           try {
             set({ loading: true })
-            await cartApi.addToCart(product.id, quantity)
+            await cartApi.addToCart(product.id, quantity, color, storage)
             await get().fetchCart()
             set({ isOpen: true })
             toast.success(`Đã thêm "${product.name}" vào giỏ!`)
@@ -48,6 +76,7 @@ const useCartStore = create(
           } catch (err) {
             const msg = err.response?.data?.quantity?.[0]
               || err.response?.data?.error
+              || err.response?.data?.detail
               || 'Không thể thêm vào giỏ hàng.'
             toast.error(msg)
             return false
@@ -56,9 +85,10 @@ const useCartStore = create(
           }
         }
 
+        // Local cart for guest
         const items = [...get().items]
         const existingIdx = items.findIndex(
-          i => getItemKey(i.product.id, i.color, i.storage) === key
+          i => getItemKey(i.product?.id ?? i.product_id, i.color, i.storage) === key
         )
 
         if (existingIdx > -1) {
@@ -102,7 +132,7 @@ const useCartStore = create(
         }
 
         const items = get().items.map(item =>
-          item.id === itemId ? { ...item, quantity } : item
+          (item.id === itemId || item.product?.id === itemId) ? { ...item, quantity } : item
         )
         set({ items })
       },
@@ -124,7 +154,7 @@ const useCartStore = create(
           return
         }
 
-        set({ items: get().items.filter(i => i.id !== itemId) })
+        set({ items: get().items.filter(i => i.id !== itemId && i.product?.id !== itemId) })
         toast.success('Đã xóa sản phẩm khỏi giỏ.')
       },
 
@@ -140,20 +170,6 @@ const useCartStore = create(
         set({ items: [], appliedCoupon: null })
       },
 
-      fetchCart: async () => {
-        const token = useAuthStore.getState().accessToken
-        if (!token) return
-        try {
-          set({ loading: true })
-          const res = await cartApi.fetchCart()
-          set({ items: res.data.items || [] })
-        } catch {
-          // ignore
-        } finally {
-          set({ loading: false })
-        }
-      },
-
       syncWithServer: async () => get().syncCart(),
       resetCart: async () => get().clearCart(),
       syncCart: async () => {
@@ -163,7 +179,7 @@ const useCartStore = create(
 
         try {
           const payload = localItems.map(i => ({
-            product_id: i.product.id,
+            product_id: i.product?.id ?? i.product_id,
             quantity: i.quantity,
             color: i.color || '',
             storage: i.storage || '',
