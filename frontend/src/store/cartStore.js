@@ -154,6 +154,8 @@ const useCartStore = create(
         }
       },
 
+      syncWithServer: async () => get().syncCart(),
+      resetCart: async () => get().clearCart(),
       syncCart: async () => {
         const token = useAuthStore.getState().accessToken
         const localItems = get().items

@@ -20,12 +20,22 @@ const useAuthStore = create(
           refreshToken: tokens.refresh,
         })
         // Sync giỏ hàng local lên server
-        useCartStore.getState().syncWithServer()
+        const cart = useCartStore.getState()
+        if (typeof cart.syncWithServer === 'function') {
+          cart.syncWithServer()
+        } else if (typeof cart.syncCart === 'function') {
+          cart.syncCart()
+        }
       },
 
       logout: () => {
         // Reset cart khi đăng xuất
-        useCartStore.getState().resetCart()
+        const cart = useCartStore.getState()
+        if (typeof cart.resetCart === 'function') {
+          cart.resetCart()
+        } else if (typeof cart.clearCart === 'function') {
+          cart.clearCart()
+        }
         set({ user: null, accessToken: null, refreshToken: null })
       },
 
